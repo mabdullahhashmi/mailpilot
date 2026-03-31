@@ -27,7 +27,15 @@ $subject = trim($input['subject'] ?? '');
 $bodyHtml = $input['body_html'] ?? '';
 $smtpAccountId = (int)($input['smtp_account_id'] ?? 0);
 $contactListId = (int)($input['contact_list_id'] ?? 0);
-$scheduledAt = $input['scheduled_at'] ?? '';
+$scheduledAtRaw = trim($input['scheduled_at'] ?? '');
+// Normalise datetime-local format (YYYY-MM-DDTHH:MM) → MySQL DATETIME format
+$scheduledAt = '';
+if ($scheduledAtRaw !== '') {
+    $ts = strtotime($scheduledAtRaw);
+    if ($ts !== false) {
+        $scheduledAt = date('Y-m-d H:i:s', $ts);
+    }
+}
 $minDelay = max(10, (int)($input['min_delay_seconds'] ?? 60));
 $maxDelay = max($minDelay, (int)($input['max_delay_seconds'] ?? 3600));
 $doSchedule = !empty($input['schedule']);

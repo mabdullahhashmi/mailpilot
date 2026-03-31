@@ -14,6 +14,13 @@ function getDB() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
+            // Sync MySQL session timezone with PHP's configured timezone so
+            // that NOW() in queries matches date() in PHP (fixes schedule timing).
+            $offsetSecs = (new DateTimeZone(APP_TIMEZONE))->getOffset(new DateTime());
+            $sign       = $offsetSecs >= 0 ? '+' : '-';
+            $hours      = str_pad(floor(abs($offsetSecs) / 3600), 2, '0', STR_PAD_LEFT);
+            $minutes    = str_pad(floor((abs($offsetSecs) % 3600) / 60), 2, '0', STR_PAD_LEFT);
+            $pdo->exec("SET time_zone = '{$sign}{$hours}:{$minutes}'");
         } catch (PDOException $e) {
             http_response_code(500);
             die(json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]));
