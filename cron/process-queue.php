@@ -23,23 +23,14 @@ require_once __DIR__ . '/../lib/PHPMailer/src/SMTP.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Verify cron secret
-$secret = '';
-if (php_sapi_name() === 'cli') {
-    // CLI mode: parse from argv
-    foreach ($argv ?? [] as $arg) {
-        if (strpos($arg, 'secret=') === 0) {
-            $secret = substr($arg, 7);
-        }
-    }
-} else {
-    // Web mode: parse from GET
+// Verify cron secret (CLI is always allowed since only hosting can trigger it)
+if (php_sapi_name() !== 'cli') {
+    // Web mode: require secret in URL
     $secret = $_GET['secret'] ?? '';
-}
-
-if ($secret !== CRON_SECRET) {
-    http_response_code(403);
-    die('Unauthorized');
+    if ($secret !== CRON_SECRET) {
+        http_response_code(403);
+        die('Unauthorized');
+    }
 }
 
 $logFile = __DIR__ . '/../logs/cron.log';
