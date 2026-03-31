@@ -9,9 +9,9 @@
 // DATABASE CONFIGURATION
 // ============================================================
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'email_marketing');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_NAME', 'u717045813_mailpilot');
+define('DB_USER', 'u717045813_mailpilot');
+define('DB_PASS', 'mailpilot@ASgd134');
 define('DB_CHARSET', 'utf8mb4');
 
 // ============================================================
@@ -26,7 +26,7 @@ define('APP_TIMEZONE', 'Asia/Karachi');
 // SECURITY
 // ============================================================
 // Change this to a random 32+ character string before first use!
-define('ENCRYPTION_KEY', 'CHANGE_ME_TO_A_RANDOM_STRING_32_CHARS_LONG!');
+define('ENCRYPTION_KEY', 'mP9x$kQ7vR2wF5nJ8bL3cY6dH0tA4eU1');
 define('SESSION_NAME', 'mailpilot_session');
 define('CSRF_TOKEN_NAME', 'csrf_token');
 
@@ -43,7 +43,7 @@ define('MAX_CSV_SIZE', 10 * 1024 * 1024); // 10MB
 // ============================================================
 define('QUEUE_BATCH_SIZE', 5);      // Emails to process per cron run
 define('MAX_RETRY_ATTEMPTS', 3);    // Max retries for failed emails
-define('CRON_SECRET', 'CHANGE_ME_CRON_SECRET_KEY'); // Protect cron endpoint
+define('CRON_SECRET', 'mp_cron_7Xk9Qw2Rv5Tn'); // Protect cron endpoint
 
 // ============================================================
 // TIMEZONE
