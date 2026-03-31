@@ -19,7 +19,7 @@ define('DB_CHARSET', 'utf8mb4');
 // ============================================================
 define('APP_NAME', 'MailPilot');
 define('APP_VERSION', '1.0.0');
-define('APP_URL', ''); // e.g. https://yourdomain.com/email-tool  (no trailing slash)
+define('APP_URL', 'https://royalblue-tapir-258681.hostingersite.com'); // no trailing slash
 define('APP_TIMEZONE', 'Asia/Karachi');
 
 // ============================================================
