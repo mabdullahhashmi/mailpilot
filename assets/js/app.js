@@ -237,8 +237,6 @@ function initTinyMCE(selector = '#emailBody', uploadUrl = 'api/upload-image.php'
     tinymce.init({
         selector: selector,
         height: 500,
-        skin: 'oxide-dark',
-        content_css: 'dark',
         plugins: 'lists link image code table hr fullscreen preview',
         toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist | link image table hr | code fullscreen preview',
         menubar: 'file edit view insert format table',
