@@ -64,6 +64,10 @@ try {
                         <span class="nav-icon">👥</span>
                         Contacts
                     </a>
+                    <a href="<?= $basePath ?>/pages/warmup.php" class="nav-item <?= $currentPage === 'warmup' ? 'active' : '' ?>">
+                        <span class="nav-icon">🔥</span>
+                        Email Warm-up
+                    </a>
                 </div>
                 
                 <div class="nav-section">

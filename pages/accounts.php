@@ -49,6 +49,7 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                             <th>Server</th>
                             <th>From</th>
                             <th>Status</th>
+                            <th>Warm-Up</th>
                             <th>Sent Today</th>
                             <th>Actions</th>
                         </tr>
@@ -71,6 +72,16 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                                     <span class="badge badge-completed">Active</span>
                                 <?php else: ?>
                                     <span class="badge badge-draft">Disabled</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($acc['warmup_status'] === 'active'): ?>
+                                    <span class="badge" style="background:#f59e0b;color:#fff;">🔥 Warm-up (Day <?= $acc['warmup_current_day'] ?: 1 ?>)</span>
+                                    <?php if ($acc['is_seed_account']): ?>
+                                        <div class="text-muted fs-sm mt-1">🌱 Seed Account</div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted fs-sm">Idle</span>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -162,6 +173,50 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                     <input type="number" id="accDailyLimit" class="form-control" value="0" min="0">
                     <div class="form-hint">Set to 0 for unlimited. Check your hosting plan's limits.</div>
                 </div>
+
+                <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--border-color);">
+                
+                <h4>🔥 Warm-Up & IMAP Settings (Optional)</h4>
+                <p class="text-muted fs-sm mb-3">Settings required if this account will be used for automated warm-up.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>IMAP Host</label>
+                        <input type="text" id="accImapHost" class="form-control" placeholder="imap.hostinger.com">
+                    </div>
+                    <div class="form-group">
+                        <label>IMAP Port</label>
+                        <input type="number" id="accImapPort" class="form-control" value="993">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>IMAP Encryption</label>
+                    <select id="accImapEncryption" class="form-control">
+                        <option value="ssl">SSL</option>
+                        <option value="tls">TLS</option>
+                        <option value="">None</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>IMAP Username</label>
+                        <input type="email" id="accImapUsername" class="form-control" placeholder="Usually same as email">
+                    </div>
+                    <div class="form-group">
+                        <label>IMAP Password</label>
+                        <input type="password" id="accImapPassword" class="form-control" placeholder="Usually same as SMTP">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="accIsSeed" style="width: auto;">
+                        <strong>Use as Warm-Up Seed Account</strong>
+                    </label>
+                    <div class="form-hint">Check this if this is a free Gmail/Outlook account meant primarily to receive and reply to emails to build your other domains' reputation.</div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" onclick="Modal.close('addAccountModal')">Cancel</button>
@@ -193,6 +248,12 @@ async function saveAccount(e) {
             from_name: document.getElementById('accFromName').value,
             from_email: document.getElementById('accFromEmail').value,
             daily_limit: document.getElementById('accDailyLimit').value,
+            imap_host: document.getElementById('accImapHost').value,
+            imap_port: document.getElementById('accImapPort').value,
+            imap_encryption: document.getElementById('accImapEncryption').value,
+            imap_username: document.getElementById('accImapUsername').value,
+            imap_password: document.getElementById('accImapPassword').value,
+            is_seed_account: document.getElementById('accIsSeed').checked ? 1 : 0
         };
         
         const result = await apiCall(basePath + '/api/smtp-save.php', data);
@@ -225,6 +286,15 @@ function editAccount(acc) {
     document.getElementById('accFromName').value = acc.from_name;
     document.getElementById('accFromEmail').value = acc.from_email;
     document.getElementById('accDailyLimit').value = acc.daily_limit;
+    
+    document.getElementById('accImapHost').value = acc.imap_host || '';
+    document.getElementById('accImapPort').value = acc.imap_port || '993';
+    document.getElementById('accImapEncryption').value = acc.imap_encryption || 'ssl';
+    document.getElementById('accImapUsername').value = acc.imap_username || '';
+    document.getElementById('accImapPassword').value = '';
+    document.getElementById('accImapPassword').placeholder = 'Leave blank to keep current';
+    document.getElementById('accIsSeed').checked = acc.is_seed_account == 1;
+    
     Modal.open('addAccountModal');
 }
 
@@ -247,8 +317,12 @@ async function testSmtp(accountId) {
 // Auto-fill from email when username changes
 document.getElementById('accUsername').addEventListener('input', function() {
     const fromEmail = document.getElementById('accFromEmail');
+    const imapUser = document.getElementById('accImapUsername');
     if (!fromEmail.value || fromEmail.value === '') {
         fromEmail.value = this.value;
+    }
+    if (!imapUser.value || imapUser.value === '') {
+        imapUser.value = this.value;
     }
 });
 

@@ -32,6 +32,13 @@ $fromName = trim($input['from_name'] ?? '');
 $fromEmail = trim($input['from_email'] ?? '');
 $dailyLimit = (int)($input['daily_limit'] ?? 0);
 
+$imapHost = trim($input['imap_host'] ?? '');
+$imapPort = (int)($input['imap_port'] ?? 993);
+$imapEncryption = $input['imap_encryption'] ?? 'ssl';
+$imapUsername = trim($input['imap_username'] ?? '');
+$imapPassword = trim($input['imap_password'] ?? '');
+$isSeedAccount = (int)($input['is_seed_account'] ?? 0);
+
 // Validate
 if (!$label || !$host || !$port || !$username || !$fromName || !$fromEmail) {
     jsonResponse(['success' => false, 'message' => 'All required fields must be filled in.'], 400);
@@ -53,15 +60,25 @@ try {
             'from_name' => $fromName,
             'from_email' => $fromEmail,
             'daily_limit' => $dailyLimit,
+            'imap_host' => $imapHost ? $imapHost : null,
+            'imap_port' => $imapPort,
+            'imap_encryption' => $imapEncryption,
+            'imap_username' => $imapUsername ? $imapUsername : null,
+            'is_seed_account' => $isSeedAccount
         ];
         
-        $sql = "UPDATE smtp_accounts SET label = ?, smtp_host = ?, smtp_port = ?, smtp_encryption = ?, smtp_username = ?, from_name = ?, from_email = ?, daily_limit = ?";
+        $sql = "UPDATE smtp_accounts SET label = ?, smtp_host = ?, smtp_port = ?, smtp_encryption = ?, smtp_username = ?, from_name = ?, from_email = ?, daily_limit = ?, imap_host = ?, imap_port = ?, imap_encryption = ?, imap_username = ?, is_seed_account = ?";
         $params = array_values($updateFields);
         
         // Only update password if provided
         if ($password) {
             $sql .= ", smtp_password = ?";
             $params[] = encryptString($password);
+        }
+        
+        if ($imapPassword) {
+            $sql .= ", imap_password = ?";
+            $params[] = encryptString($imapPassword);
         }
         
         $sql .= " WHERE id = ?";
@@ -75,10 +92,15 @@ try {
             jsonResponse(['success' => false, 'message' => 'Password is required for new accounts.'], 400);
         }
         
+        $encImapPass = $imapPassword ? encryptString($imapPassword) : null;
+        
         $newId = dbInsert(
-            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [$label, $host, $port, $encryption, $username, encryptString($password), $fromName, $fromEmail, $dailyLimit]
+            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit, imap_host, imap_port, imap_encryption, imap_username, imap_password, is_seed_account) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                $label, $host, $port, $encryption, $username, encryptString($password), $fromName, $fromEmail, $dailyLimit,
+                $imapHost ? $imapHost : null, $imapPort, $imapEncryption, $imapUsername ? $imapUsername : null, $encImapPass, $isSeedAccount
+            ]
         );
         
         jsonResponse(['success' => true, 'message' => 'SMTP account created successfully.', 'id' => $newId]);
