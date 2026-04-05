@@ -63,6 +63,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 'install') {
                     `smtp_encryption` ENUM('ssl','tls') NOT NULL DEFAULT 'ssl',
                     `smtp_username` VARCHAR(255) NOT NULL,
                     `smtp_password` TEXT NOT NULL,
+                    `imap_host` VARCHAR(255) DEFAULT NULL,
+                    `imap_port` INT DEFAULT 993,
+                    `imap_encryption` ENUM('ssl','tls','') DEFAULT 'ssl',
+                    `imap_username` VARCHAR(255) DEFAULT NULL,
+                    `imap_password` TEXT DEFAULT NULL,
+                    `warmup_status` ENUM('idle','active') NOT NULL DEFAULT 'idle',
+                    `warmup_current_day` INT NOT NULL DEFAULT 0,
+                    `warmup_target_daily` INT NOT NULL DEFAULT 0,
+                    `is_seed_account` TINYINT(1) NOT NULL DEFAULT 0,
                     `from_name` VARCHAR(255) NOT NULL,
                     `from_email` VARCHAR(255) NOT NULL,
                     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -157,6 +166,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 'install') {
                     `user_agent` TEXT,
                     INDEX idx_token (`tracking_token`),
                     INDEX idx_campaign (`campaign_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
+            
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `warmup_logs` (
+                    `id` INT AUTO_INCREMENT PRIMARY KEY,
+                    `sender_account_id` INT NOT NULL,
+                    `receiver_account_id` INT NOT NULL,
+                    `message_id` VARCHAR(255) NOT NULL,
+                    `thread_id` VARCHAR(255) DEFAULT NULL,
+                    `sent_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `replied_at` DATETIME DEFAULT NULL,
+                    `spam_saved` TINYINT(1) NOT NULL DEFAULT 0,
+                    INDEX idx_sender (`sender_account_id`),
+                    INDEX idx_receiver (`receiver_account_id`),
+                    INDEX idx_message (`message_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
             
