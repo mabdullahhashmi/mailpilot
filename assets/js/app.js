@@ -150,7 +150,20 @@ async function apiCall(url, data = {}, method = 'POST') {
         }
         
         const response = await fetch(url, options);
-        const result = await response.json();
+        let result;
+        const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            result = await response.json();
+        } else {
+            const text = await response.text();
+            console.error('API Error Response:', text);
+            // If it contains "robot" or "captcha", friendly message
+            if (text.toLowerCase().includes('recaptcha') || text.toLowerCase().includes('robot')) {
+                throw new Error("Hostinger Firewall (WAF) blocked the request. Please contact Hostinger support to whitelist your IP or disable ModSecurity.");
+            }
+            throw new Error('Server returned an invalid format (HTML instead of JSON). This is usually a PHP error or Firewall block. Check the browser console for details.');
+        }
         
         if (!response.ok) {
             throw new Error(result.message || 'Request failed');
