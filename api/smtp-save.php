@@ -64,10 +64,11 @@ try {
             'imap_port' => $imapPort,
             'imap_encryption' => $imapEncryption,
             'imap_username' => $imapUsername ? $imapUsername : null,
-            'is_seed_account' => $isSeedAccount
+            'is_seed_account' => $isSeedAccount,
+            'warmup_status' => $imapHost ? 'active' : 'idle'
         ];
         
-        $sql = "UPDATE smtp_accounts SET label = ?, smtp_host = ?, smtp_port = ?, smtp_encryption = ?, smtp_username = ?, from_name = ?, from_email = ?, daily_limit = ?, imap_host = ?, imap_port = ?, imap_encryption = ?, imap_username = ?, is_seed_account = ?";
+        $sql = "UPDATE smtp_accounts SET label = ?, smtp_host = ?, smtp_port = ?, smtp_encryption = ?, smtp_username = ?, from_name = ?, from_email = ?, daily_limit = ?, imap_host = ?, imap_port = ?, imap_encryption = ?, imap_username = ?, is_seed_account = ?, warmup_status = ?";
         $params = array_values($updateFields);
         
         // Only update password if provided
@@ -95,11 +96,12 @@ try {
         $encImapPass = $imapPassword ? encryptString($imapPassword) : null;
         
         $newId = dbInsert(
-            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit, imap_host, imap_port, imap_encryption, imap_username, imap_password, is_seed_account) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit, imap_host, imap_port, imap_encryption, imap_username, imap_password, is_seed_account, warmup_status) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 $label, $host, $port, $encryption, $username, encryptString($password), $fromName, $fromEmail, $dailyLimit,
-                $imapHost ? $imapHost : null, $imapPort, $imapEncryption, $imapUsername ? $imapUsername : null, $encImapPass, $isSeedAccount
+                $imapHost ? $imapHost : null, $imapPort, $imapEncryption, $imapUsername ? $imapUsername : null, $encImapPass, $isSeedAccount,
+                $imapHost ? 'active' : 'idle'
             ]
         );
         
