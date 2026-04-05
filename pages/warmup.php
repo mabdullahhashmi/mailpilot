@@ -40,6 +40,9 @@ if (!empty($healthStats['total']) && $healthStats['total'] > 0) {
     $replyRate  = ($healthStats['replied']  / $healthStats['total']) * 40;
     $healthScore = min(100, (int) round($rescueRate + $replyRate));
 }
+
+// Fetch recent logs
+$logs = dbFetchAll("
     SELECT w.*, 
            s.from_email as sender_email, 
            r.from_email as receiver_email 
