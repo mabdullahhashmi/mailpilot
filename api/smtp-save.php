@@ -50,7 +50,25 @@ if (!in_array($encryption, ['ssl', 'tls'])) {
 
 try {
     if ($id > 0) {
-        // Update existing
+        // Fetch current warmup_status to avoid downgrading a completed account
+        $currentAccount = dbFetchOne("SELECT warmup_status FROM smtp_accounts WHERE id = ?", [$id]);
+        $currentStatus = $currentAccount['warmup_status'] ?? 'idle';
+
+        // Determine new warmup status:
+        // - No IMAP = idle
+        // - Already completed = keep completed
+        // - Already active = keep active
+        // - Was idle + IMAP added = activate
+        if (!$imapHost) {
+            $newWarmupStatus = 'idle';
+        } elseif ($currentStatus === 'completed') {
+            $newWarmupStatus = 'completed';
+        } elseif ($currentStatus === 'active') {
+            $newWarmupStatus = 'active';
+        } else {
+            $newWarmupStatus = 'active';
+        }
+
         $updateFields = [
             'label' => $label,
             'smtp_host' => $host,
@@ -65,7 +83,7 @@ try {
             'imap_encryption' => $imapEncryption,
             'imap_username' => $imapUsername ? $imapUsername : null,
             'is_seed_account' => $isSeedAccount,
-            'warmup_status' => $imapHost ? 'active' : 'idle'
+            'warmup_status' => $newWarmupStatus
         ];
         
         $sql = "UPDATE smtp_accounts SET label = ?, smtp_host = ?, smtp_port = ?, smtp_encryption = ?, smtp_username = ?, from_name = ?, from_email = ?, daily_limit = ?, imap_host = ?, imap_port = ?, imap_encryption = ?, imap_username = ?, is_seed_account = ?, warmup_status = ?";

@@ -24,6 +24,10 @@ require_once __DIR__ . '/../lib/PHPMailer/src/SMTP.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+// Warmup ramp-up constants (30-day programme, max 50 emails/day)
+define('WARMUP_DAYS', 30);
+define('WARMUP_MAX_DAILY', 50);
+
 // 1. Verify Secret
 $secret = '';
 if (php_sapi_name() === 'cli') {
@@ -52,18 +56,26 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts WHERE warmup_status = 'activ
 foreach ($accounts as $acc) {
     $lastReset = $acc['last_reset_date'] ? new DateTime($acc['last_reset_date']) : null;
     if (!$lastReset || $lastReset->format('Y-m-d') !== $now->format('Y-m-d')) {
-        // New day! Advance the warmup day
-        $newDay = min(14, $acc['warmup_current_day'] + 1);
-        
-        // Calculate target for the day (Exponential / Linear curve up to 40)
-        // Day 1: 2, Day 3: 5, Day 7: 15, Day 14: 40
-        $target = max(2, (int) round(40 * pow($newDay / 14, 1.5)));
-        
-        dbExecute(
-            "UPDATE smtp_accounts SET sent_today = 0, last_reset_date = ?, warmup_current_day = ?, warmup_target_daily = ? WHERE id = ?",
-            [$now->format('Y-m-d'), $newDay, $target, $acc['id']]
-        );
-        echo "Reset account {$acc['id']}. Day: {$newDay}, Target: {$target}\n";
+        // New day — advance the warmup day counter
+        $newDay = $acc['warmup_current_day'] + 1;
+
+        // 30-day exponential ramp-up curve: Day 1 → 2/day, Day 30 → 50/day
+        $target = max(2, (int) round(WARMUP_MAX_DAILY * pow(min($newDay, WARMUP_DAYS) / WARMUP_DAYS, 1.5)));
+
+        if ($newDay > WARMUP_DAYS) {
+            // Warmup programme complete — mark account as completed
+            dbExecute(
+                "UPDATE smtp_accounts SET sent_today = 0, last_reset_date = ?, warmup_current_day = ?, warmup_target_daily = ?, warmup_status = 'completed', warmup_completed_at = NOW() WHERE id = ?",
+                [$now->format('Y-m-d'), WARMUP_DAYS, WARMUP_MAX_DAILY, $acc['id']]
+            );
+            echo "Warmup COMPLETED for account {$acc['id']} ({$acc['from_email']}).\n";
+        } else {
+            dbExecute(
+                "UPDATE smtp_accounts SET sent_today = 0, last_reset_date = ?, warmup_current_day = ?, warmup_target_daily = ? WHERE id = ?",
+                [$now->format('Y-m-d'), $newDay, $target, $acc['id']]
+            );
+            echo "Reset account {$acc['id']}. Day: {$newDay}/" . WARMUP_DAYS . ", Target: {$target}/day\n";
+        }
     }
 }
 
@@ -72,6 +84,8 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts WHERE warmup_status = 'activ
 
 // ------------- ROUTINE 2: Send Warm-up Emails -------------
 echo "Processing Outbound Warm-up...\n";
+// Shuffle for fair distribution across all accounts each cron tick
+shuffle($accounts);
 // Maximum sends per cron run to avoid overloading
 $sendsThisRun = 0;
 $maxSendsPerRun = 5; 
@@ -147,8 +161,8 @@ foreach ($accounts as $acc) {
         
         // Log it
         dbInsert(
-            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id) VALUES (?, ?, ?)",
-            [$acc['id'], $receiver['id'], $messageId]
+            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id, thread_id) VALUES (?, ?, ?, ?)",
+            [$acc['id'], $receiver['id'], $messageId, $uniqueId]
         );
         
         // Update stats
@@ -221,8 +235,8 @@ foreach ($allAccounts as $acc) {
                             // Mark as read
                             imap_setflag_full($inbox, $emailNo, "\\Seen");
                             
-                            // 30% chance to reply
-                            if (mt_rand(1, 100) <= 30) {
+                            // 30% chance to reply (only if this seed account has SMTP configured)
+                            if (mt_rand(1, 100) <= 30 && !empty($acc['smtp_host']) && !empty($acc['smtp_username']) && !empty($acc['smtp_password'])) {
                                 // Fetch original sender
                                 $senderAuth = dbFetchOne("SELECT * FROM smtp_accounts WHERE id = ?", [$log['sender_account_id']]);
                                 
@@ -276,7 +290,9 @@ foreach ($allAccounts as $acc) {
         foreach ($spamFolders as $folder) {
             $spamBox = @imap_open($serverString . $folder, $user, $pass, OP_SILENT, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
             if ($spamBox) {
-                $spamEmails = imap_search($spamBox, 'ALL'); // Search all in spam
+                // Only check recent emails to avoid scanning a massive spam folder
+                $since = date('d-M-Y', strtotime('-14 days'));
+                $spamEmails = imap_search($spamBox, 'SINCE "' . $since . '"');
                 if ($spamEmails) {
                     foreach ($spamEmails as $emailNo) {
                         $fullHeader = imap_fetchheader($spamBox, $emailNo);

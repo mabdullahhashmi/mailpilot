@@ -76,10 +76,13 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                             </td>
                             <td>
                                 <?php if ($acc['warmup_status'] === 'active'): ?>
-                                    <span class="badge" style="background:#f59e0b;color:#fff;">🔥 Warm-up (Day <?= $acc['warmup_current_day'] ?: 1 ?>)</span>
+                                    <span class="badge" style="background:#f59e0b;color:#fff;">🔥 Warm-up (Day <?= $acc['warmup_current_day'] ?: 1 ?>/30)</span>
                                     <?php if ($acc['is_seed_account']): ?>
                                         <div class="text-muted fs-sm mt-1">🌱 Seed Account</div>
                                     <?php endif; ?>
+                                <?php elseif ($acc['warmup_status'] === 'completed'): ?>
+                                    <span class="badge" style="background:#10b981;color:#fff;">✅ Warmup Complete</span>
+                                    <div class="text-muted fs-sm mt-1">Ready for cold outreach</div>
                                 <?php else: ?>
                                     <span class="text-muted fs-sm">Idle</span>
                                 <?php endif; ?>
