@@ -25,7 +25,7 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
         <h1><span class="header-icon">🔧</span>SMTP Accounts</h1>
         <div class="subtitle">Manage your email sending servers (Hostinger, Namecheap, etc.)</div>
     </div>
-    <button class="btn btn-primary" onclick="Modal.open('addAccountModal')">
+    <button class="btn btn-primary" onclick="openAddAccountModal()">
         ✚ Add Account
     </button>
 </div>
@@ -38,7 +38,7 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                 <div class="empty-icon">🔧</div>
                 <h3>No SMTP accounts configured</h3>
                 <p>Add your first email server to start sending campaigns.</p>
-                <button class="btn btn-primary" onclick="Modal.open('addAccountModal')">✚ Add SMTP Account</button>
+                <button class="btn btn-primary" onclick="openAddAccountModal()">✚ Add SMTP Account</button>
             </div>
         <?php else: ?>
             <div class="table-wrapper">
@@ -122,13 +122,22 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
         <form id="smtpForm" onsubmit="saveAccount(event)">
             <div class="modal-body">
                 <input type="hidden" id="accountId" value="">
+
+                <div class="form-group">
+                    <label>Email Provider</label>
+                    <select id="accProvider" class="form-control" onchange="applyProviderPreset(this.value)">
+                        <option value="custom">Other SMTP (Custom)</option>
+                        <option value="gmail">Google Gmail</option>
+                    </select>
+                    <div class="form-hint">Choose Gmail for auto-filled Google SMTP/IMAP settings.</div>
+                </div>
                 
                 <div class="form-group">
                     <label>Label <span class="required">*</span></label>
                     <input type="text" id="accLabel" class="form-control" placeholder="e.g., Hostinger - info@domain.com" required>
                 </div>
                 
-                <div class="form-row">
+                <div class="form-row" id="smtpServerRow">
                     <div class="form-group">
                         <label>SMTP Host <span class="required">*</span></label>
                         <input type="text" id="accHost" class="form-control" placeholder="smtp.hostinger.com" required>
@@ -155,7 +164,7 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                         <input type="email" id="accUsername" class="form-control" placeholder="info@yourdomain.com" required>
                     </div>
                     <div class="form-group">
-                        <label>Password <span class="required">*</span></label>
+                        <label id="accPasswordLabel">Password <span class="required">*</span></label>
                         <input type="password" id="accPassword" class="form-control" placeholder="Email password" required>
                     </div>
                 </div>
@@ -182,7 +191,7 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
                 <h4>🔥 Warm-Up & IMAP Settings (Optional)</h4>
                 <p class="text-muted fs-sm mb-3">Settings required if this account will be used for automated warm-up.</p>
 
-                <div class="form-row">
+                <div class="form-row" id="imapServerRow">
                     <div class="form-group">
                         <label>IMAP Host</label>
                         <input type="text" id="accImapHost" class="form-control" placeholder="imap.hostinger.com">
@@ -231,6 +240,60 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
 
 <?php
 $pageScript = <<<'JS'
+function openAddAccountModal() {
+    document.getElementById('accountModalTitle').textContent = 'Add SMTP Account';
+    document.getElementById('smtpForm').reset();
+    document.getElementById('accountId').value = '';
+    document.getElementById('accPassword').required = true;
+    document.getElementById('accPassword').placeholder = 'Email password';
+    document.getElementById('accImapPassword').placeholder = 'Usually same as SMTP';
+    document.getElementById('accProvider').value = 'custom';
+    applyProviderPreset('custom');
+    Modal.open('addAccountModal');
+}
+
+function applyProviderPreset(provider, preserveExisting = false) {
+    const smtpRow = document.getElementById('smtpServerRow');
+    const imapRow = document.getElementById('imapServerRow');
+    const passwordLabel = document.getElementById('accPasswordLabel');
+    const passwordInput = document.getElementById('accPassword');
+    const fromEmail = document.getElementById('accFromEmail');
+    const username = document.getElementById('accUsername');
+    const imapUser = document.getElementById('accImapUsername');
+
+    if (provider === 'gmail') {
+        smtpRow.style.display = 'none';
+        imapRow.style.display = 'none';
+
+        document.getElementById('accHost').value = 'smtp.gmail.com';
+        document.getElementById('accPort').value = '587';
+        document.getElementById('accEncryption').value = 'tls';
+
+        document.getElementById('accImapHost').value = 'imap.gmail.com';
+        document.getElementById('accImapPort').value = '993';
+        document.getElementById('accImapEncryption').value = 'ssl';
+
+        if (!preserveExisting || !imapUser.value) {
+            imapUser.value = username.value;
+        }
+        if (!preserveExisting || !fromEmail.value) {
+            fromEmail.value = username.value;
+        }
+
+        passwordLabel.innerHTML = 'Google App Password <span class="required">*</span>';
+        passwordInput.placeholder = '16-character Google App Password';
+        document.getElementById('accImapPassword').placeholder = 'Same App Password';
+    } else {
+        smtpRow.style.display = '';
+        imapRow.style.display = '';
+        passwordLabel.innerHTML = 'Password <span class="required">*</span>';
+        if (!preserveExisting) {
+            passwordInput.placeholder = 'Email password';
+            document.getElementById('accImapPassword').placeholder = 'Usually same as SMTP';
+        }
+    }
+}
+
 async function saveAccount(e) {
     e.preventDefault();
     const btn = document.getElementById('saveAccountBtn');
@@ -278,6 +341,8 @@ async function saveAccount(e) {
 function editAccount(acc) {
     document.getElementById('accountModalTitle').textContent = 'Edit SMTP Account';
     document.getElementById('accountId').value = acc.id;
+    const detectedProvider = (acc.smtp_host || '').toLowerCase() === 'smtp.gmail.com' ? 'gmail' : 'custom';
+    document.getElementById('accProvider').value = detectedProvider;
     document.getElementById('accLabel').value = acc.label;
     document.getElementById('accHost').value = acc.smtp_host;
     document.getElementById('accPort').value = acc.smtp_port;
@@ -297,6 +362,8 @@ function editAccount(acc) {
     document.getElementById('accImapPassword').value = '';
     document.getElementById('accImapPassword').placeholder = 'Leave blank to keep current';
     document.getElementById('accIsSeed').checked = acc.is_seed_account == 1;
+
+    applyProviderPreset(detectedProvider, true);
     
     Modal.open('addAccountModal');
 }
