@@ -2,7 +2,7 @@
 /**
  * Cron Job: Process Email Warm-Up
  * 
- * Should be run every 5 minutes: */5 * * * *
+ * Should be run every 5 minutes: star-slash-5 pattern in cron (every 5 minutes)
  * php process-warmup.php secret=YOUR_CRON_SECRET
  */
 
