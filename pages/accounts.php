@@ -25,9 +25,12 @@ $accounts = dbFetchAll("SELECT * FROM smtp_accounts ORDER BY created_at DESC");
         <h1><span class="header-icon">🔧</span>SMTP Accounts</h1>
         <div class="subtitle">Manage your email sending servers (Hostinger, Namecheap, etc.)</div>
     </div>
-    <button class="btn btn-primary" onclick="openAddAccountModal()">
-        ✚ Add Account
-    </button>
+    <div style="display:flex; gap:8px;">
+        <a class="btn btn-outline" href="<?= $basePath ?>/pages/accounts-bulk-gmail.php">📥 Bulk Gmail Import</a>
+        <button class="btn btn-primary" onclick="openAddAccountModal()">
+            ✚ Add Account
+        </button>
+    </div>
 </div>
 
 <!-- Accounts List -->

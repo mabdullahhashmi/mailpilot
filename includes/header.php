@@ -76,6 +76,10 @@ try {
                         <span class="nav-icon">🔧</span>
                         SMTP Accounts
                     </a>
+                    <a href="<?= $basePath ?>/pages/accounts-bulk-gmail.php" class="nav-item <?= $currentPage === 'accounts-bulk-gmail' ? 'active' : '' ?>">
+                        <span class="nav-icon">📥</span>
+                        Bulk Gmail Import
+                    </a>
                     <a href="<?= $basePath ?>/pages/settings.php" class="nav-item <?= $currentPage === 'settings' ? 'active' : '' ?>">
                         <span class="nav-icon">⚙️</span>
                         Settings
