@@ -38,6 +38,21 @@ user2@gmail.com	qrst uvwx yzab cdef"></textarea>
             </div>
         </div>
 
+        <div class="form-row" style="margin-top: 12px;">
+            <div class="form-group" style="margin: 0;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="sendTestEmail" style="width: auto;">
+                    Send SMTP test email for each imported account
+                </label>
+                <div class="form-hint">Runs right after account creation to verify each SMTP login.</div>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Test Recipient (optional)</label>
+                <input type="email" id="testToEmail" class="form-control" placeholder="leave blank = send to same account">
+                <div class="form-hint">If empty, each account sends test email to itself.</div>
+            </div>
+        </div>
+
         <div style="display:flex; gap: 8px; margin-top: 12px;">
             <button class="btn btn-outline" type="button" onclick="previewBulkRows()">Preview Rows</button>
             <button class="btn btn-primary" type="button" id="createBulkBtn" onclick="createBulkAccounts()">Create Accounts</button>
@@ -172,18 +187,34 @@ async function createBulkAccounts() {
     try {
         const result = await apiCall(basePath + '/api/smtp-bulk-gmail-save.php', {
             rows: parsedRows,
-            is_seed_account: document.getElementById('markAsSeed').checked ? 1 : 0
+            is_seed_account: document.getElementById('markAsSeed').checked ? 1 : 0,
+            send_test_email: document.getElementById('sendTestEmail').checked ? 1 : 0,
+            test_to_email: (document.getElementById('testToEmail').value || '').trim()
         });
 
         const created = Number(result.created || 0);
         const skipped = Number(result.skipped || 0);
         const failed = Array.isArray(result.errors) ? result.errors.length : 0;
+        const tests = Array.isArray(result.test_results) ? result.test_results : [];
+        const testsPassed = tests.filter(t => !!t.success).length;
+        const testsFailed = tests.length - testsPassed;
+
+        const testHtml = tests.length
+            ? `
+                <hr style="margin: 12px 0; border: 0; border-top: 1px solid var(--border-color);">
+                <div style="margin-bottom:8px;"><strong>SMTP Tests:</strong> ${testsPassed} passed, ${testsFailed} failed</div>
+                <div style="max-height: 180px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; color: var(--text-muted);">
+                    ${escapeHtml(tests.map(t => `${t.success ? 'PASS' : 'FAIL'} - ${t.email} - ${t.message}`).join('\n'))}
+                </div>
+              `
+            : '';
 
         resultBox.innerHTML = `
             <div style="color: var(--color-success); margin-bottom: 8px;"><strong>Created:</strong> ${created}</div>
             <div style="color: var(--text-secondary); margin-bottom: 8px;"><strong>Skipped:</strong> ${skipped}</div>
             <div style="color: ${failed ? 'var(--color-danger)' : 'var(--text-secondary)'};"><strong>Failed:</strong> ${failed}</div>
             ${failed ? `<div style="margin-top:10px; font-size:12px; color: var(--text-muted); white-space: pre-wrap;">${escapeHtml(result.errors.join('\n'))}</div>` : ''}
+            ${testHtml}
         `;
 
         Toast.success(result.message || 'Bulk import completed.');
