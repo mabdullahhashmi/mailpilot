@@ -125,6 +125,12 @@ foreach ($accounts as $acc) {
     // Generate spinning content
     $content = SpintaxEngine::generateWarmupEmail();
     
+    // Generate open-tracking token
+    $openToken = bin2hex(random_bytes(16));
+    $appUrl = APP_URL ?: 'https://royalblue-tapir-258681.hostingersite.com';
+    $trackingPixel = '<img src="' . $appUrl . '/track/warmup-open.php?t=' . $openToken . '" width="1" height="1" style="display:none;" alt="" />';
+    $bodyWithTracking = $content['body'] . $trackingPixel;
+    
     // Send email
     $mail = new PHPMailer(true);
     try {
@@ -144,7 +150,7 @@ foreach ($accounts as $acc) {
         
         $mail->isHTML(true);
         $mail->Subject = $content['subject'];
-        $mail->Body    = $content['body'];
+        $mail->Body    = $bodyWithTracking;
         $mail->AltBody = strip_tags($content['body']);
         
         // Generate custom Message-ID to easily find it later
@@ -159,10 +165,10 @@ foreach ($accounts as $acc) {
         
         $mail->send();
         
-        // Log it
+        // Log it with full tracking data
         dbInsert(
-            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id, thread_id, subject, sender_email, receiver_email) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [$acc['id'], $receiver['id'], $messageId, $uniqueId, $content['subject'], $acc['from_email'], $receiver['from_email']]
+            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id, thread_id, open_tracking_token, subject, sender_email, sender_label, receiver_email, receiver_label, email_body, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
+            [$acc['id'], $receiver['id'], $messageId, $uniqueId, $openToken, $content['subject'], $acc['from_email'], $acc['label'] ?? $acc['from_name'], $receiver['from_email'], $receiver['label'] ?? $receiver['from_name'], $content['body']]
         );
         
         // Update stats
@@ -232,6 +238,11 @@ foreach ($allAccounts as $acc) {
                             // It's a warmup match!
                             echo "Found warmup email in INBOX: $msgId\n";
                             
+                            // Mark as delivered (reached inbox)
+                            if (empty($log['delivered_at'])) {
+                                dbExecute("UPDATE warmup_logs SET delivered_at = NOW(), status = CASE WHEN status = 'sent' THEN 'delivered' ELSE status END WHERE id = ?", [$log['id']]);
+                            }
+                            
                             // Mark as read
                             imap_setflag_full($inbox, $emailNo, "\\Seen");
                             
@@ -267,7 +278,7 @@ foreach ($allAccounts as $acc) {
                                         
                                         $mail->send();
                                         
-                                        dbExecute("UPDATE warmup_logs SET replied_at = NOW() WHERE id = ?", [$log['id']]);
+                                        dbExecute("UPDATE warmup_logs SET replied_at = NOW(), status = 'replied' WHERE id = ?", [$log['id']]);
                                         echo "Replied to $msgId\n";
                                         
                                     } catch (Exception $e) {
@@ -309,7 +320,7 @@ foreach ($allAccounts as $acc) {
                                 // Mark as read
                                 imap_setflag_full($spamBox, $emailNo, "\\Seen");
                                 
-                                dbExecute("UPDATE warmup_logs SET spam_saved = 1 WHERE id = ?", [$log['id']]);
+                                dbExecute("UPDATE warmup_logs SET spam_saved = 1, status = 'spam' WHERE id = ?", [$log['id']]);
                             }
                         }
                     }

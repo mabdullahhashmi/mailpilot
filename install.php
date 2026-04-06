@@ -177,12 +177,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 'install') {
                     `receiver_account_id` INT NOT NULL,
                     `message_id` VARCHAR(255) NOT NULL,
                     `thread_id` VARCHAR(255) DEFAULT NULL,
+                    `open_tracking_token` VARCHAR(64) DEFAULT NULL,
+                    `subject` VARCHAR(500) DEFAULT NULL,
+                    `sender_email` VARCHAR(255) DEFAULT NULL,
+                    `sender_label` VARCHAR(255) DEFAULT NULL,
+                    `receiver_email` VARCHAR(255) DEFAULT NULL,
+                    `receiver_label` VARCHAR(255) DEFAULT NULL,
+                    `email_body` TEXT DEFAULT NULL,
                     `sent_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `delivered_at` DATETIME DEFAULT NULL,
                     `replied_at` DATETIME DEFAULT NULL,
+                    `opened_at` DATETIME DEFAULT NULL,
+                    `open_count` INT NOT NULL DEFAULT 0,
                     `spam_saved` TINYINT(1) NOT NULL DEFAULT 0,
+                    `status` ENUM('scheduled','sent','delivered','opened','replied','spam','failed') NOT NULL DEFAULT 'sent',
                     INDEX idx_sender (`sender_account_id`),
                     INDEX idx_receiver (`receiver_account_id`),
-                    INDEX idx_message (`message_id`)
+                    INDEX idx_message (`message_id`),
+                    INDEX idx_open_token (`open_tracking_token`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
             
