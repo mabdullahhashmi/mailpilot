@@ -68,6 +68,26 @@ try {
                         <span class="nav-icon">🔥</span>
                         Email Warm-up
                     </a>
+                    <a href="<?= $basePath ?>/pages/warmup-report.php" class="nav-item <?= $currentPage === 'warmup-report' ? 'active' : '' ?>">
+                        <span class="nav-icon">📈</span>
+                        Warmup Reports
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">Deliverability</div>
+                    <a href="<?= $basePath ?>/pages/bounces.php" class="nav-item <?= $currentPage === 'bounces' ? 'active' : '' ?>">
+                        <span class="nav-icon">↩️</span>
+                        Bounces
+                    </a>
+                    <a href="<?= $basePath ?>/pages/reputation.php" class="nav-item <?= $currentPage === 'reputation' ? 'active' : '' ?>">
+                        <span class="nav-icon">🏆</span>
+                        Reputation
+                    </a>
+                    <a href="<?= $basePath ?>/pages/spam-analyzer.php" class="nav-item <?= $currentPage === 'spam-analyzer' ? 'active' : '' ?>">
+                        <span class="nav-icon">🛡️</span>
+                        Spam Analyzer
+                    </a>
                 </div>
                 
                 <div class="nav-section">

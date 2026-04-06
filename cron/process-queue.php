@@ -75,7 +75,7 @@ $pendingEmails = dbFetchAll("
 ", [MAX_RETRY_ATTEMPTS, QUEUE_BATCH_SIZE]);
 
 if (empty($pendingEmails)) {
-    cronLog("No pending emails to process.");
+    cronLog("No pending emails to process. Checking suppression cleanup...");
     
     // Check for campaigns that should be marked complete
     $sendingCampaigns = dbFetchAll("SELECT id FROM campaigns WHERE status = 'sending'");
@@ -100,6 +100,16 @@ foreach ($pendingEmails as $email) {
     $smtpId = $email['smtp_account_id'];
     
     try {
+        // Check suppression list before sending
+        $isSuppressed = dbFetchOne("SELECT id, reason FROM suppression_list WHERE email = ?", [$email['to_email']]);
+        if ($isSuppressed) {
+            dbExecute("UPDATE email_queue SET status = 'failed', error_message = ? WHERE id = ?", 
+                ["Suppressed: {$isSuppressed['reason']}", $email['id']]);
+            dbExecute("UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = ?", [$email['campaign_id']]);
+            cronLog("⊘ Skipped {$email['to_email']} — suppressed ({$isSuppressed['reason']})");
+            continue;
+        }
+
         // Mark as sending
         dbExecute("UPDATE email_queue SET status = 'sending', attempts = attempts + 1 WHERE id = ?", [$email['id']]);
         
@@ -185,6 +195,89 @@ foreach ($pendingEmails as $email) {
     } catch (Exception $e) {
         $errorMsg = $e->getMessage();
         cronLog("✕ Failed {$email['to_email']}: {$errorMsg}");
+        
+        // ---- Bounce Classification ----
+        $bounceType = 'unknown';
+        $bounceCode = '';
+        
+        // Extract SMTP status code
+        if (preg_match('/(\d{3})\s/', $errorMsg, $codeMatch)) {
+            $bounceCode = $codeMatch[1];
+        }
+        
+        // Hard bounces: 5xx permanent failures
+        $hardBouncePatterns = [
+            '/550/',                    // Mailbox not found
+            '/551/',                    // User not local
+            '/552/',                    // Exceeded storage
+            '/553/',                    // Mailbox name not allowed
+            '/554/',                    // Transaction failed
+            '/user\s+(unknown|not\s+found)/i',
+            '/mailbox\s+(not\s+found|unavailable|does\s+not\s+exist)/i',
+            '/no\s+such\s+user/i',
+            '/address\s+rejected/i',
+            '/recipient\s+rejected/i',
+            '/account\s+(disabled|suspended|closed)/i',
+            '/invalid\s+(mailbox|recipient|address)/i',
+        ];
+        
+        // Soft bounces: 4xx temporary failures
+        $softBouncePatterns = [
+            '/421/',                    // Service not available
+            '/450/',                    // Mailbox busy
+            '/451/',                    // Local error
+            '/452/',                    // Insufficient storage
+            '/too\s+many\s+(connections|recipients)/i',
+            '/rate\s+limit/i',
+            '/try\s+again\s+later/i',
+            '/temporarily\s+deferred/i',
+            '/greylisted/i',
+        ];
+        
+        // Complaint patterns
+        $complaintPatterns = [
+            '/spam/i',
+            '/blocked/i',
+            '/blacklist/i',
+            '/dnsbl/i',
+            '/rejected.*policy/i',
+        ];
+        
+        foreach ($hardBouncePatterns as $pat) {
+            if (preg_match($pat, $errorMsg)) { $bounceType = 'hard'; break; }
+        }
+        if ($bounceType === 'unknown') {
+            foreach ($softBouncePatterns as $pat) {
+                if (preg_match($pat, $errorMsg)) { $bounceType = 'soft'; break; }
+            }
+        }
+        if ($bounceType === 'unknown') {
+            foreach ($complaintPatterns as $pat) {
+                if (preg_match($pat, $errorMsg)) { $bounceType = 'complaint'; break; }
+            }
+        }
+        
+        // Record bounce
+        try {
+            dbInsert(
+                "INSERT INTO bounces (email, smtp_account_id, campaign_id, queue_id, bounce_type, bounce_code, bounce_message, source) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'smtp_response')",
+                [$email['to_email'], $smtpId, $email['campaign_id'], $email['id'], $bounceType, $bounceCode, substr($errorMsg, 0, 1000)]
+            );
+        } catch (\Exception $bx) {
+            cronLog("  → Could not log bounce: " . $bx->getMessage());
+        }
+        
+        // Auto-suppress hard bounces
+        if ($bounceType === 'hard') {
+            try {
+                dbInsert(
+                    "INSERT IGNORE INTO suppression_list (email, reason, source_detail) VALUES (?, 'hard_bounce', ?)",
+                    [$email['to_email'], "Auto-suppressed: $errorMsg"]
+                );
+                cronLog("  → Hard bounce: {$email['to_email']} added to suppression list");
+            } catch (\Exception $sx) { /* duplicate, ignore */ }
+        }
         
         // Check if max retries reached
         $attempts = (int) dbFetchValue("SELECT attempts FROM email_queue WHERE id = ?", [$email['id']]);

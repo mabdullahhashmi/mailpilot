@@ -161,8 +161,8 @@ foreach ($accounts as $acc) {
         
         // Log it
         dbInsert(
-            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id, thread_id) VALUES (?, ?, ?, ?)",
-            [$acc['id'], $receiver['id'], $messageId, $uniqueId]
+            "INSERT INTO warmup_logs (sender_account_id, receiver_account_id, message_id, thread_id, subject, sender_email, receiver_email) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [$acc['id'], $receiver['id'], $messageId, $uniqueId, $content['subject'], $acc['from_email'], $receiver['from_email']]
         );
         
         // Update stats
