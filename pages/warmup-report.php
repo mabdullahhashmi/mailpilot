@@ -115,21 +115,34 @@ $todaySent = dbFetchAll("
     ORDER BY wl.sent_at DESC
 ");
 
-// Schedule prediction
+// Today's full schedule from warmup_schedule table (exact time slots)
+$todaySchedule = dbFetchAll("
+    SELECT ws.id, ws.scheduled_at, ws.status,
+           s.from_email AS sender_email, s.label AS sender_label, s.from_name AS sender_name,
+           s.warmup_current_day AS sender_day, s.warmup_target_daily AS sender_target,
+           r.from_email AS receiver_email, r.label AS receiver_label, r.from_name AS receiver_name,
+           wl.subject, wl.status AS log_status, wl.opened_at, wl.replied_at, wl.open_count, wl.spam_saved
+    FROM warmup_schedule ws
+    JOIN smtp_accounts s ON ws.sender_account_id = s.id
+    JOIN smtp_accounts r ON ws.receiver_account_id = r.id
+    LEFT JOIN warmup_logs wl ON ws.warmup_log_id = wl.id
+    WHERE DATE(ws.scheduled_at) = CURDATE()
+    ORDER BY ws.scheduled_at ASC
+") ?: [];
+
+// Per-sender summary from schedule
 $schedulePreview = [];
 foreach ($senders as $s) {
     if ($s['warmup_status'] !== 'active') continue;
     $remaining = max(0, $s['warmup_target_daily'] - $s['sent_today']);
-    if ($remaining > 0) {
-        $schedulePreview[] = [
-            'sender' => $s['label'] ?: $s['from_email'],
-            'sender_email' => $s['from_email'],
-            'remaining' => $remaining,
-            'target' => $s['warmup_target_daily'],
-            'sent' => $s['sent_today'],
-            'day' => $s['warmup_current_day'],
-        ];
-    }
+    $schedulePreview[] = [
+        'sender'       => $s['label'] ?: $s['from_email'],
+        'sender_email' => $s['from_email'],
+        'remaining'    => $remaining,
+        'target'       => $s['warmup_target_daily'],
+        'sent'         => $s['sent_today'],
+        'day'          => $s['warmup_current_day'],
+    ];
 }
 
 // Daily trend (last 14 days)
@@ -255,7 +268,7 @@ function wuStatusBadge($log) {
 <div class="wu-panel active" id="panel-schedule">
     <?php if (!empty($schedulePreview)): ?>
     <div class="card" style="margin-bottom:14px;">
-        <div class="card-header"><h3>⏰ Remaining Today</h3></div>
+        <div class="card-header"><h3>⏰ Today's Sender Progress</h3></div>
         <div class="card-body">
             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:12px;">
                 <?php foreach ($schedulePreview as $sp): ?>
@@ -281,39 +294,64 @@ function wuStatusBadge($log) {
     </div>
     <?php endif; ?>
 
+    <!-- Full day schedule with exact times -->
     <div class="card">
-        <div class="card-header"><h3>📬 Today's Warmup Emails (<?= count($todaySent) ?>)</h3></div>
-        <div class="card-body" style="padding:0;">
-            <?php if (empty($todaySent)): ?>
+        <div class="card-header">
+            <h3>📅 Today's Full Schedule (<?= count($todaySchedule) ?> slots)</h3>
+            <span class="text-muted" style="font-size:11px;">Sender → Seed · Pre-planned exact send times</span>
+        </div>
+        <div class="card-body" style="padding:0; overflow-x:auto;">
+            <?php if (empty($todaySchedule)): ?>
                 <div style="padding:30px; text-align:center; color:var(--text-muted);">
                     <div style="font-size:40px; margin-bottom:8px;">📭</div>
-                    No warmup emails sent today yet. Cron will send based on the ramp-up schedule.
+                    <div>No schedule yet for today.</div>
+                    <div style="font-size:12px; margin-top:6px;">Run the warmup cron once and it will auto-generate today's exact send slots.</div>
                 </div>
             <?php else: ?>
-                <div class="wu-erow wu-ehead">
-                    <div>#</div><div>From (Sender)</div><div>To (Seed)</div><div>Subject</div><div>Status</div><div>Opened?</div><div>Time</div>
+                <div style="display:grid; grid-template-columns:80px 1fr 1fr 1fr 100px 70px; gap:10px; padding:8px 14px; font-weight:700; font-size:10px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.5px; background:rgba(255,255,255,.025);">
+                    <div>Time</div><div>Sender</div><div>→ Seed</div><div>Subject</div><div>Status</div><div>Opens</div>
                 </div>
-                <?php foreach ($todaySent as $i => $ts): ?>
-                <div class="wu-erow">
-                    <div class="text-muted"><?= $i + 1 ?></div>
+                <?php foreach ($todaySchedule as $slot): ?>
+                <?php
+                    $slotTime  = date('g:i A', strtotime($slot['scheduled_at']));
+                    $isPast    = strtotime($slot['scheduled_at']) < time();
+                    $slotStatus = $slot['status'];
+                    $logStatus  = $slot['log_status'] ?? null;
+                    // Determine display status badge
+                    if ($slotStatus === 'sent' && $logStatus) {
+                        $displayLog = ['status' => $logStatus, 'opened_at' => $slot['opened_at'], 'replied_at' => $slot['replied_at'], 'spam_saved' => $slot['spam_saved'] ?? 0];
+                        $badge = wuStatusBadge($displayLog);
+                    } elseif ($slotStatus === 'pending' && $isPast) {
+                        $badge = '<span class="wu-s" style="background:rgba(239,68,68,.12);color:#f87171;">⏳ Overdue</span>';
+                    } elseif ($slotStatus === 'pending') {
+                        $badge = '<span class="wu-s" style="background:rgba(99,102,241,.12);color:#818cf8;">🕒 Scheduled</span>';
+                    } elseif ($slotStatus === 'failed') {
+                        $badge = '<span class="wu-s wu-s-failed">❌ Failed</span>';
+                    } else {
+                        $badge = '<span class="wu-s wu-s-sent">📤 Sent</span>';
+                    }
+                ?>
+                <div style="display:grid; grid-template-columns:80px 1fr 1fr 1fr 100px 70px; gap:10px; padding:9px 14px; border-bottom:1px solid rgba(255,255,255,.04); font-size:12px; align-items:center; <?= !$isPast && $slotStatus==='pending' ? 'opacity:.7;' : '' ?>">
+                    <div style="font-weight:700; color:<?= $isPast ? 'var(--text-primary)' : 'var(--color-primary)' ?>; font-size:11px;"><?= $slotTime ?></div>
                     <div>
-                        <div style="font-weight:600; font-size:12px;"><?= e($ts['sender_label'] ?? '') ?></div>
-                        <div class="text-muted" style="font-size:10px;"><?= e($ts['sender_email'] ?? '—') ?></div>
+                        <div style="font-weight:600;"><?= e($slot['sender_label'] ?: $slot['sender_name']) ?></div>
+                        <div class="text-muted" style="font-size:10px;"><?= e($slot['sender_email']) ?></div>
                     </div>
                     <div>
-                        <div style="font-weight:600; font-size:12px;"><?= e($ts['receiver_label'] ?? '') ?></div>
-                        <div class="text-muted" style="font-size:10px;"><?= e($ts['receiver_email'] ?? '—') ?></div>
+                        <div style="font-weight:600; color:var(--color-primary);"><?= e($slot['receiver_label'] ?: $slot['receiver_name']) ?></div>
+                        <div class="text-muted" style="font-size:10px;"><?= e($slot['receiver_email']) ?></div>
                     </div>
-                    <div style="font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="<?= e($ts['subject'] ?? '') ?>"><?= e($ts['subject'] ?? '—') ?></div>
-                    <div><?= wuStatusBadge($ts) ?></div>
+                    <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted);" title="<?= e($slot['subject'] ?? '') ?>">
+                        <?= $slot['subject'] ? e($slot['subject']) : '—' ?>
+                    </div>
+                    <div><?= $badge ?></div>
                     <div style="text-align:center;">
-                        <?php if (($ts['open_count'] ?? 0) > 0): ?>
-                            <span style="color:var(--color-warning); font-weight:700;"><?= $ts['open_count'] ?>x</span>
+                        <?php if (($slot['open_count'] ?? 0) > 0): ?>
+                            <span style="color:var(--color-warning); font-weight:700;"><?= $slot['open_count'] ?>x</span>
                         <?php else: ?>
                             <span class="text-muted">—</span>
                         <?php endif; ?>
                     </div>
-                    <div class="text-muted" style="font-size:11px;"><?= date('g:i A', strtotime($ts['sent_at'])) ?></div>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
