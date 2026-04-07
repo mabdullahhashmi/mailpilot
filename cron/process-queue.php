@@ -55,8 +55,9 @@ cronLog("=== Cron started ===");
 
 // Reset daily counters if needed
 $today = date('Y-m-d');
-dbExecute("UPDATE smtp_accounts SET sent_today = 0 WHERE last_reset_date IS NULL OR last_reset_date < ?", [$today]);
-dbExecute("UPDATE smtp_accounts SET last_reset_date = ? WHERE last_reset_date IS NULL OR last_reset_date < ?", [$today, $today]);
+// Keep queue counters separate from active warmup accounts; otherwise warmup day progression gets stuck.
+dbExecute("UPDATE smtp_accounts SET sent_today = 0 WHERE warmup_status = 'idle' AND (last_reset_date IS NULL OR last_reset_date < ?)", [$today]);
+dbExecute("UPDATE smtp_accounts SET last_reset_date = ? WHERE warmup_status = 'idle' AND (last_reset_date IS NULL OR last_reset_date < ?)", [$today, $today]);
 
 // Update campaign statuses: scheduled → sending (if scheduled_at has passed)
 dbExecute("UPDATE campaigns SET status = 'sending' WHERE status = 'scheduled' AND scheduled_at <= NOW()");

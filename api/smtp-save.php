@@ -99,6 +99,12 @@ try {
             $sql .= ", imap_password = ?";
             $params[] = encryptString($imapPassword);
         }
+
+        // First-time warmup activation should start immediately from Day 1.
+        if ($newWarmupStatus === 'active' && $currentStatus !== 'active' && $currentStatus !== 'completed') {
+            $sql .= ", warmup_current_day = 1, warmup_target_daily = 2, sent_today = 0, last_reset_date = ?";
+            $params[] = date('Y-m-d');
+        }
         
         $sql .= " WHERE id = ?";
         $params[] = $id;
@@ -114,12 +120,16 @@ try {
         $encImapPass = $imapPassword ? encryptString($imapPassword) : null;
         
         $newId = dbInsert(
-            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit, imap_host, imap_port, imap_encryption, imap_username, imap_password, is_seed_account, warmup_status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO smtp_accounts (label, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password, from_name, from_email, daily_limit, imap_host, imap_port, imap_encryption, imap_username, imap_password, is_seed_account, warmup_status, warmup_current_day, warmup_target_daily, sent_today, last_reset_date) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 $label, $host, $port, $encryption, $username, encryptString($password), $fromName, $fromEmail, $dailyLimit,
                 $imapHost ? $imapHost : null, $imapPort, $imapEncryption, $imapUsername ? $imapUsername : null, $encImapPass, $isSeedAccount,
-                $imapHost ? 'active' : 'idle'
+                $imapHost ? 'active' : 'idle',
+                $imapHost ? 1 : 0,
+                $imapHost ? 2 : 0,
+                0,
+                $imapHost ? date('Y-m-d') : null
             ]
         );
         

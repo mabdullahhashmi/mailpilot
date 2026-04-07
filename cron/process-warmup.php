@@ -55,6 +55,15 @@ echo "Checking daily resets...\n";
 $accounts = dbFetchAll("SELECT * FROM smtp_accounts WHERE warmup_status = 'active' OR is_seed_account = 1");
 foreach ($accounts as $acc) {
     $lastReset = $acc['last_reset_date'] ? new DateTime($acc['last_reset_date']) : null;
+    // Bootstrap accounts that were activated but still at Day 0/target 0.
+    if ($acc['warmup_status'] === 'active' && (int)$acc['warmup_current_day'] === 0) {
+        dbExecute(
+            "UPDATE smtp_accounts SET sent_today = 0, last_reset_date = ?, warmup_current_day = 1, warmup_target_daily = 2 WHERE id = ?",
+            [$now->format('Y-m-d'), $acc['id']]
+        );
+        echo "Bootstrapped account {$acc['id']} to Day 1, Target 2/day\n";
+        continue;
+    }
     if (!$lastReset || $lastReset->format('Y-m-d') !== $now->format('Y-m-d')) {
         // New day — advance the warmup day counter
         $newDay = $acc['warmup_current_day'] + 1;
@@ -93,14 +102,24 @@ $maxSendsPerRun = 5;
 foreach ($accounts as $acc) {
     if ($sendsThisRun >= $maxSendsPerRun) break;
     if ($acc['sent_today'] >= $acc['warmup_target_daily']) continue;
-    
-    // We send emails periodically throughout the day. 
-    // Roughly randomly chance of sending on a given 5-min tick
-    // 288 ticks per day (5 mins). Prob = target / 288
-    $probability = $acc['warmup_target_daily'] / 200; // slightly boosted so it actually finishes early
-    
-    if ((mt_rand() / mt_getrandmax()) > $probability) {
-        continue; // Skip this tick, keeps sending natural
+
+    // Cycle-aware pacing: catch up if behind expected sends by current time of day.
+    $hour = (int)$now->format('H');
+    $minute = (int)$now->format('i');
+    $elapsedTicks = max(1, (int)floor((($hour * 60) + $minute) / 5) + 1); // 1..288
+    $dailyTarget = max(0, (int)$acc['warmup_target_daily']);
+    $sentToday = max(0, (int)$acc['sent_today']);
+    $expectedByNow = (int)floor(($dailyTarget * $elapsedTicks) / 288);
+    $remaining = max(0, $dailyTarget - $sentToday);
+    $mustSendNow = $remaining > 0 && $sentToday < $expectedByNow;
+
+    if (!$mustSendNow) {
+        // Small randomization while still ensuring the day target gets completed.
+        $ticksLeft = max(1, 288 - $elapsedTicks);
+        $probability = min(1, max(0.03, $remaining / $ticksLeft));
+        if ((mt_rand() / mt_getrandmax()) > $probability) {
+            continue;
+        }
     }
     
     // Find a receiver account. Must be active warmup or a seed, AND not the same domain
