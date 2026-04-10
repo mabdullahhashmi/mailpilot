@@ -13,11 +13,40 @@ class EventLogController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $campaignId = $request->input('campaign_id');
-        $limit = min(100, $request->input('limit', 50));
+        $query = \App\Models\WarmupEventLog::with(['event.campaign'])
+            ->orderBy('created_at', 'desc');
 
-        $logs = $this->logging->getRecentLogs($limit, $campaignId);
-        return response()->json($logs);
+        if ($status = $request->input('status')) {
+            $query->where('outcome', $status);
+        }
+        if ($eventType = $request->input('event_type')) {
+            $query->where('event_type', $eventType);
+        }
+        if ($date = $request->input('date')) {
+            $query->whereDate('created_at', $date);
+        }
+        if ($campaignId = $request->input('campaign_id')) {
+            $query->whereHas('event', fn($q) => $q->where('warmup_campaign_id', $campaignId));
+        }
+
+        $paginated = $query->paginate(50);
+
+        // Attach stats
+        $statsQuery = \App\Models\WarmupEventLog::query();
+        if ($date) $statsQuery->whereDate('created_at', $date);
+
+        $stats = [
+            'total' => (clone $statsQuery)->count(),
+            'success' => (clone $statsQuery)->where('outcome', 'success')->count(),
+            'failure' => (clone $statsQuery)->where('outcome', 'failure')->count(),
+            'retry' => (clone $statsQuery)->where('outcome', 'retry')->count(),
+            'skipped' => (clone $statsQuery)->where('outcome', 'skipped')->count(),
+        ];
+
+        $data = $paginated->toArray();
+        $data['stats'] = $stats;
+
+        return response()->json($data);
     }
 
     public function performance(): JsonResponse

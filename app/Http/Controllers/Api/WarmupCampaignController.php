@@ -29,8 +29,11 @@ class WarmupCampaignController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'campaign_name' => 'sometimes|string|max:255',
             'sender_mailbox_id' => 'required|exists:sender_mailboxes,id',
             'warmup_profile_id' => 'required|exists:warmup_profiles,id',
+            'time_window_start' => 'sometimes|string',
+            'time_window_end' => 'sometimes|string',
         ]);
 
         $campaign = $this->campaignService->start(
@@ -38,7 +41,17 @@ class WarmupCampaignController extends Controller
             $validated['warmup_profile_id']
         );
 
-        return response()->json($campaign, 201);
+        if (!empty($validated['campaign_name'])) {
+            $campaign->update(['campaign_name' => $validated['campaign_name']]);
+        }
+        if (!empty($validated['time_window_start'])) {
+            $campaign->update(['time_window_start' => $validated['time_window_start']]);
+        }
+        if (!empty($validated['time_window_end'])) {
+            $campaign->update(['time_window_end' => $validated['time_window_end']]);
+        }
+
+        return response()->json($campaign->fresh(), 201);
     }
 
     public function show(int $id): JsonResponse
@@ -88,5 +101,19 @@ class WarmupCampaignController extends Controller
     {
         $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         return response()->json($this->reportingService->campaignReport($campaign));
+    }
+
+    public function startCampaign(int $id): JsonResponse
+    {
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
+        $campaign->update(['status' => 'active']);
+        return response()->json(['message' => 'Campaign started']);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
+        $campaign->delete();
+        return response()->json(['message' => 'Campaign deleted']);
     }
 }

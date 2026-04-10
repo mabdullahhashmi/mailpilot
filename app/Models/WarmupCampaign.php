@@ -9,9 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class WarmupCampaign extends Model
 {
     protected $fillable = [
-        'sender_mailbox_id', 'domain_id', 'warmup_profile_id',
+        'campaign_name', 'sender_mailbox_id', 'domain_id', 'warmup_profile_id',
         'start_date', 'planned_duration_days', 'current_day_number',
         'current_stage', 'status', 'maintenance_mode_enabled',
+        'time_window_start', 'time_window_end',
         'completed_at', 'paused_at',
     ];
 

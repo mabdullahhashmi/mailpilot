@@ -1,0 +1,159 @@
+@extends('layouts.app')
+@section('title', 'Seed Mailboxes')
+@section('page-title', 'Seed Mailboxes')
+@section('page-description', 'Manage seed inboxes for warmup interactions')
+
+@section('content')
+<div x-data="seedsPage()" x-init="init()">
+
+    <div class="flex items-center justify-between mb-6">
+        <span class="text-zinc-500 text-sm" x-text="seeds.length + ' seeds'"></span>
+        <button @click="showModal = true; editMode = false; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i> Add Seed
+        </button>
+    </div>
+
+    <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-white/5">
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Email</th>
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Provider</th>
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Daily Cap</th>
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Interactions</th>
+                    <th class="text-right px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="s in seeds" :key="s.id">
+                    <tr class="table-row border-b border-white/[0.03]">
+                        <td class="px-5 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg gradient-success flex items-center justify-center text-white text-[10px] font-bold" x-text="s.email_address?.charAt(0).toUpperCase()"></div>
+                                <span class="text-sm text-white font-medium" x-text="s.email_address"></span>
+                            </div>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.provider || '—'"></td>
+                        <td class="px-5 py-4">
+                            <span class="badge px-2 py-0.5 rounded-full"
+                                :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
+                                x-text="s.status"></span>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.daily_interaction_cap ?? 5"></td>
+                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.total_interactions ?? 0"></td>
+                        <td class="px-5 py-4 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                                <button @click="togglePause(s)" class="btn-ghost p-2 rounded-lg text-zinc-500" :class="s.status === 'active' ? 'hover:text-amber-400' : 'hover:text-emerald-400'">
+                                    <i :data-lucide="s.status === 'active' ? 'pause' : 'play'" class="w-4 h-4"></i>
+                                </button>
+                                <button @click="editSeed(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-brand-400">
+                                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                                </button>
+                                <button @click="deleteSeed(s.id)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-red-400">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+        <div x-show="seeds.length === 0" class="text-center py-16">
+            <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="inbox" class="w-7 h-7 text-zinc-600"></i>
+            </div>
+            <p class="text-zinc-400 font-medium">No seed mailboxes yet</p>
+            <p class="text-zinc-600 text-sm mt-1">Seeds receive warmup emails and generate positive signals</p>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
+        <div class="w-full max-w-lg glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Seed' : 'Add Seed Mailbox'"></h3>
+                <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form @submit.prevent="saveSeed()" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Email Address *</label>
+                    <input type="email" x-model="form.email_address" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required :disabled="editMode">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Host *</label>
+                        <input type="text" x-model="form.smtp_host" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Port *</label>
+                        <input type="number" x-model="form.smtp_port" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Username *</label>
+                        <input type="text" x-model="form.smtp_username" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Password *</label>
+                        <input type="password" x-model="form.smtp_password" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" :required="!editMode">
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Encryption</label>
+                        <select x-model="form.smtp_encryption" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                            <option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Provider</label>
+                        <select x-model="form.provider" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                            <option value="">Auto</option><option value="google">Google</option><option value="microsoft">Microsoft</option><option value="zoho">Zoho</option><option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Daily Cap</label>
+                        <input type="number" x-model="form.daily_interaction_cap" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="5">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" @click="showModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Cancel</button>
+                    <button type="submit" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="saving">
+                        <span x-show="!saving" x-text="editMode ? 'Update' : 'Add Seed'"></span>
+                        <span x-show="saving">Saving...</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+<script>
+function seedsPage() {
+    return {
+        seeds: [], showModal: false, editMode: false, editId: null, saving: false, form: {},
+        async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
+        async load() { try { this.seeds = await apiCall('/api/warmup/seed-mailboxes'); } catch(e) { this.seeds = []; } this.$nextTick(() => lucide.createIcons()); },
+        resetForm() { this.form = { email_address: '', smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_encryption: 'tls', provider: '', daily_interaction_cap: 5 }; },
+        editSeed(s) { this.editMode = true; this.editId = s.id; this.form = { ...s, smtp_password: '' }; this.showModal = true; },
+        async saveSeed() {
+            this.saving = true;
+            try {
+                const data = { ...this.form };
+                if (this.editMode && !data.smtp_password) delete data.smtp_password;
+                if (this.editMode) { await apiCall(`/api/warmup/seed-mailboxes/${this.editId}`, 'PUT', data); showToast('Seed updated'); }
+                else { await apiCall('/api/warmup/seed-mailboxes', 'POST', data); showToast('Seed added'); }
+                this.showModal = false; await this.load();
+            } catch(e) { showToast('Error: ' + e.message, 'error'); }
+            this.saving = false;
+        },
+        async deleteSeed(id) { if (!confirm('Delete this seed?')) return; try { await apiCall(`/api/warmup/seed-mailboxes/${id}`, 'DELETE'); showToast('Deleted'); await this.load(); } catch(e) { showToast('Error', 'error'); } },
+        async togglePause(s) { const a = s.status === 'active' ? 'pause' : 'resume'; try { await apiCall(`/api/warmup/seed-mailboxes/${s.id}/${a}`, 'POST'); showToast(`Seed ${a}d`); await this.load(); } catch(e) { showToast('Error', 'error'); } }
+    };
+}
+</script>
+@endpush

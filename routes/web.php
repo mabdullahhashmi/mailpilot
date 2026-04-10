@@ -1,10 +1,16 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardPageController;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Dashboard Pages
+Route::get('/', [DashboardPageController::class, 'index'])->name('dashboard');
+Route::get('/campaigns', [DashboardPageController::class, 'campaigns'])->name('dashboard.campaigns');
+Route::get('/profiles', [DashboardPageController::class, 'profiles'])->name('dashboard.profiles');
+Route::get('/senders', [DashboardPageController::class, 'senders'])->name('dashboard.senders');
+Route::get('/seeds', [DashboardPageController::class, 'seeds'])->name('dashboard.seeds');
+Route::get('/domains', [DashboardPageController::class, 'domains'])->name('dashboard.domains');
+Route::get('/logs', [DashboardPageController::class, 'logs'])->name('dashboard.logs');
 
 // API routes for warmup engine
 Route::prefix('api/warmup')->group(function () {
@@ -34,6 +40,8 @@ Route::prefix('api/warmup')->group(function () {
 
     // Warmup Campaigns
     Route::apiResource('campaigns', \App\Http\Controllers\Api\WarmupCampaignController::class)->only(['index', 'store', 'show']);
+    Route::delete('campaigns/{id}', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'destroy']);
+    Route::post('campaigns/{id}/start', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'startCampaign']);
     Route::post('campaigns/{id}/pause', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'pause']);
     Route::post('campaigns/{id}/resume', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'resume']);
     Route::post('campaigns/{id}/stop', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'stop']);
@@ -41,6 +49,6 @@ Route::prefix('api/warmup')->group(function () {
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
 
     // Event Logs
-    Route::get('logs', [\App\Http\Controllers\Api\EventLogController::class, 'index']);
-    Route::get('logs/performance', [\App\Http\Controllers\Api\EventLogController::class, 'performance']);
+    Route::get('event-logs', [\App\Http\Controllers\Api\EventLogController::class, 'index']);
+    Route::get('event-logs/performance', [\App\Http\Controllers\Api\EventLogController::class, 'performance']);
 });

@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('warmup_campaigns', function (Blueprint $table) {
             $table->id();
+            $table->string('campaign_name')->nullable();
             $table->foreignId('sender_mailbox_id')->constrained('sender_mailboxes')->cascadeOnDelete();
             $table->foreignId('domain_id')->constrained('domains')->cascadeOnDelete();
             $table->foreignId('warmup_profile_id')->constrained('warmup_profiles');
@@ -24,8 +25,10 @@ return new class extends Migration
                 'maintenance',
                 'completed'
             ])->default('initial_trust');
-            $table->enum('status', ['pending', 'active', 'paused', 'completed', 'stopped', 'failed'])->default('pending');
+            $table->enum('status', ['draft', 'active', 'paused', 'completed', 'stopped', 'failed'])->default('draft');
             $table->boolean('maintenance_mode_enabled')->default(false);
+            $table->time('time_window_start')->default('08:00');
+            $table->time('time_window_end')->default('22:00');
             $table->timestamp('completed_at')->nullable();
             $table->timestamp('paused_at')->nullable();
             $table->timestamps();
