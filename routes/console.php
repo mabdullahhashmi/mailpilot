@@ -38,7 +38,7 @@ Schedule::call(function () {
         Log::error('Warmup daily planner failed: ' . $e->getMessage(), ['exception' => $e]);
         $diagnostic->recordHeartbeat('warmup:daily-plan', false, $e->getMessage(), 1440);
     }
-})->dailyAt('06:00')->name('warmup:daily-plan')->withoutOverlapping()->runInBackground();
+})->dailyAt('06:00')->name('warmup:daily-plan')->withoutOverlapping();
 
 // Scheduler: processes due events every 2 minutes
 Schedule::call(function () {
@@ -51,7 +51,7 @@ Schedule::call(function () {
         Log::error('Warmup scheduler failed: ' . $e->getMessage(), ['exception' => $e]);
         $diagnostic->recordHeartbeat('warmup:process-events', false, $e->getMessage(), 2);
     }
-})->everyTwoMinutes()->name('warmup:process-events')->withoutOverlapping()->runInBackground();
+})->everyTwoMinutes()->name('warmup:process-events')->withoutOverlapping();
 
 // Health updates: run daily at midnight
 Schedule::call(function () {
