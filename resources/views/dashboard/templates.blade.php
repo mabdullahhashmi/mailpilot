@@ -126,13 +126,13 @@
                 </div>
                 <div>
                     <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Subject Line</label>
-                    <input type="text" x-model="form.subject" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="e.g. Quick question about {{var:topic}}">
-                    <p class="text-zinc-600 text-[10px] mt-1">Use {{var:name}} for variations, {{greeting}}, {{signoff}}, {{sender_name}}, {{recipient_name}}</p>
+                    <input type="text" x-model="form.subject" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="e.g. Quick question about @{{var:topic}}">
+                    <p class="text-zinc-600 text-[10px] mt-1">Use @{{var:name}} for variations, @{{greeting}}, @{{signoff}}, @{{sender_name}}, @{{recipient_name}}</p>
                 </div>
                 <div>
                     <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Body *</label>
                     <textarea x-model="form.body" rows="6" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white resize-y" required
-                              placeholder="<p>{{greeting}},</p><p>Your email body here...</p><p>{{signoff}},<br>{{sender_name}}</p>"></textarea>
+                              placeholder="<p>@{{greeting}},</p><p>Your email body here...</p><p>@{{signoff}},<br>@{{sender_name}}</p>"></textarea>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>

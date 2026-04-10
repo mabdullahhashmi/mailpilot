@@ -19,7 +19,7 @@
                 </div>
             </div>
             <button @click="load()" :disabled="loading" class="btn-primary px-4 py-2.5 rounded-xl text-sm text-white font-medium flex items-center gap-2">
-                <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading && 'animate-spin'"></i> Refresh
+                <span :class="loading && 'animate-spin'" class="inline-flex"><i data-lucide="refresh-cw" class="w-4 h-4"></i></span> Refresh
             </button>
         </div>
     </div>
