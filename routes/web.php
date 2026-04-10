@@ -2,18 +2,29 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardPageController;
+use App\Http\Controllers\Auth\LoginController;
 
-// Dashboard Pages
-Route::get('/', [DashboardPageController::class, 'index'])->name('dashboard');
-Route::get('/campaigns', [DashboardPageController::class, 'campaigns'])->name('dashboard.campaigns');
-Route::get('/profiles', [DashboardPageController::class, 'profiles'])->name('dashboard.profiles');
-Route::get('/senders', [DashboardPageController::class, 'senders'])->name('dashboard.senders');
-Route::get('/seeds', [DashboardPageController::class, 'seeds'])->name('dashboard.seeds');
-Route::get('/domains', [DashboardPageController::class, 'domains'])->name('dashboard.domains');
-Route::get('/logs', [DashboardPageController::class, 'logs'])->name('dashboard.logs');
+// Auth Routes (guest only)
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [LoginController::class, 'login']);
+});
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
-// API routes for warmup engine
-Route::prefix('api/warmup')->group(function () {
+// Protected Dashboard Pages
+Route::middleware('auth')->group(function () {
+    Route::get('/', [DashboardPageController::class, 'index'])->name('dashboard');
+    Route::get('/campaigns', [DashboardPageController::class, 'campaigns'])->name('dashboard.campaigns');
+    Route::get('/profiles', [DashboardPageController::class, 'profiles'])->name('dashboard.profiles');
+    Route::get('/senders', [DashboardPageController::class, 'senders'])->name('dashboard.senders');
+    Route::get('/seeds', [DashboardPageController::class, 'seeds'])->name('dashboard.seeds');
+    Route::get('/domains', [DashboardPageController::class, 'domains'])->name('dashboard.domains');
+    Route::get('/logs', [DashboardPageController::class, 'logs'])->name('dashboard.logs');
+    Route::get('/settings', [DashboardPageController::class, 'settings'])->name('dashboard.settings');
+});
+
+// Protected API routes for warmup engine
+Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [\App\Http\Controllers\Api\DashboardController::class, 'overview']);
     Route::get('/dashboard/readiness', [\App\Http\Controllers\Api\DashboardController::class, 'senderReadiness']);
@@ -47,6 +58,12 @@ Route::prefix('api/warmup')->group(function () {
     Route::post('campaigns/{id}/stop', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'stop']);
     Route::post('campaigns/{id}/restart', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'restart']);
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
+
+    // Settings
+    Route::get('settings', [\App\Http\Controllers\Api\SettingsController::class, 'index']);
+    Route::put('settings', [\App\Http\Controllers\Api\SettingsController::class, 'update']);
+    Route::put('settings/profile', [\App\Http\Controllers\Api\SettingsController::class, 'updateProfile']);
+    Route::put('settings/password', [\App\Http\Controllers\Api\SettingsController::class, 'updatePassword']);
 
     // Event Logs
     Route::get('event-logs', [\App\Http\Controllers\Api\EventLogController::class, 'index']);

@@ -40,4 +40,9 @@ class DashboardPageController extends Controller
     {
         return view('dashboard.logs');
     }
+
+    public function settings()
+    {
+        return view('dashboard.settings');
+    }
 }

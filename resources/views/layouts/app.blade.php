@@ -159,6 +159,13 @@
                     <i data-lucide="activity" class="w-5 h-5 flex-shrink-0"></i>
                     <span x-show="sidebarOpen" x-transition>Event Logs</span>
                 </a>
+
+                <p x-show="sidebarOpen" class="px-3 mt-6 mb-2 text-[10px] font-semibold tracking-widest uppercase text-zinc-600">System</p>
+
+                <a href="{{ route('dashboard.settings') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.settings') ? 'active' : '' }}">
+                    <i data-lucide="settings" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>Settings</span>
+                </a>
             </nav>
 
             <!-- Sidebar Toggle -->
@@ -190,9 +197,17 @@
                         <div class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></div>
                         <span class="text-emerald-400 text-xs font-medium">Engine Active</span>
                     </div>
-                    <div class="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center text-white text-xs font-bold">
-                        MP
+                    <div class="flex items-center gap-2 px-2 py-1 rounded-lg text-zinc-400 text-xs">
+                        <i data-lucide="user" class="w-3.5 h-3.5"></i>
+                        <span>{{ Auth::user()->name ?? 'Admin' }}</span>
                     </div>
+                    <form method="POST" action="{{ route('logout') }}" class="inline">
+                        @csrf
+                        <button type="submit" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition text-xs font-medium" title="Sign out">
+                            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Logout</span>
+                        </button>
+                    </form>
                 </div>
             </header>
 
@@ -221,7 +236,23 @@
             };
             if (body) opts.body = JSON.stringify(body);
             const res = await fetch(url, opts);
-            if (!res.ok) throw new Error(await res.text());
+            if (res.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Session expired');
+            }
+            if (res.status === 419) {
+                window.location.reload();
+                throw new Error('CSRF token mismatch');
+            }
+            if (res.status === 429) {
+                throw new Error('Too many requests. Please wait a moment.');
+            }
+            if (!res.ok) {
+                const text = await res.text();
+                let msg = text;
+                try { const j = JSON.parse(text); msg = j.error || j.message || text; } catch {}
+                throw new Error(msg);
+            }
             return res.json();
         }
 
