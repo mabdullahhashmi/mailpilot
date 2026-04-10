@@ -12,11 +12,14 @@ class Domain extends Model
         'dns_last_checked_at', 'domain_health_score', 'readiness_score',
         'daily_domain_cap', 'daily_growth_cap', 'max_active_warming_mailboxes',
         'maintenance_mode', 'status',
+        'reputation_risk_level', 'reputation_score', 'last_reputation_scan_at',
+        'total_bounces_7d', 'total_sends_7d',
     ];
 
     protected $casts = [
         'dns_last_checked_at' => 'datetime',
         'maintenance_mode' => 'boolean',
+        'last_reputation_scan_at' => 'datetime',
     ];
 
     public function senderMailboxes(): HasMany
@@ -37,6 +40,16 @@ class Domain extends Model
     public function healthLogs(): HasMany
     {
         return $this->hasMany(DomainHealthLog::class);
+    }
+
+    public function dnsAuditLogs(): HasMany
+    {
+        return $this->hasMany(DnsAuditLog::class);
+    }
+
+    public function reputationScores(): HasMany
+    {
+        return $this->hasMany(ReputationScore::class);
     }
 
     public function activeSenderCount(): int

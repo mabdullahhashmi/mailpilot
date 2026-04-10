@@ -76,6 +76,11 @@ class DashboardPageController extends Controller
         return view('dashboard.progress-report');
     }
 
+    public function deliverability()
+    {
+        return view('dashboard.deliverability');
+    }
+
     public function diagnostics()
     {
         return view('dashboard.diagnostics');

@@ -167,3 +167,59 @@ Schedule::call(function () {
         Log::error('Slot sync failed: ' . $e->getMessage());
     }
 })->everyTenMinutes()->name('warmup:slot-sync');
+
+// ── Phase I: Deliverability Intelligence Scheduled Tasks ──
+
+// Reputation scan: daily at 22:00
+Schedule::call(function () {
+    $diagnostic = app(\App\Services\SystemDiagnosticService::class);
+    try {
+        $results = app(\App\Services\ReputationService::class)->runFullScan();
+        Log::info("[Reputation] Scan: {$results['domains_scored']} domains, {$results['senders_scored']} senders scored");
+        $diagnostic->recordHeartbeat('warmup:reputation-scan', true, null, 1440);
+    } catch (\Throwable $e) {
+        Log::error('Reputation scan failed: ' . $e->getMessage());
+        $diagnostic->recordHeartbeat('warmup:reputation-scan', false, $e->getMessage(), 1440);
+    }
+})->dailyAt('22:00')->name('warmup:reputation-scan');
+
+// Strategy optimizer: daily at 22:30 (after reputation to use fresh scores)
+Schedule::call(function () {
+    $diagnostic = app(\App\Services\SystemDiagnosticService::class);
+    try {
+        $results = app(\App\Services\SendingStrategyService::class)->analyzeAll(true);
+        Log::info("[Strategy] Analyzed: {$results['analyzed']}, Ramp: {$results['ramp_up']}, Slow: {$results['slow_down']}, Pause: {$results['pause']}");
+        $diagnostic->recordHeartbeat('warmup:strategy-optimizer', true, null, 1440);
+    } catch (\Throwable $e) {
+        Log::error('Strategy optimizer failed: ' . $e->getMessage());
+        $diagnostic->recordHeartbeat('warmup:strategy-optimizer', false, $e->getMessage(), 1440);
+    }
+})->dailyAt('22:30')->name('warmup:strategy-optimizer');
+
+// DNS audit: runs with weekly DNS check (Monday 03:15) to track changes
+Schedule::call(function () {
+    try {
+        $reputationService = app(\App\Services\ReputationService::class);
+        $domainService = app(\App\Services\DomainService::class);
+        $domains = \App\Models\Domain::all();
+
+        foreach ($domains as $domain) {
+            try {
+                $previousState = [
+                    'spf_status' => $domain->spf_status,
+                    'dkim_status' => $domain->dkim_status,
+                    'dmarc_status' => $domain->dmarc_status,
+                    'mx_status' => $domain->mx_status,
+                ];
+                $domainService->checkDns($domain);
+                $domain->refresh();
+                $reputationService->auditDnsChanges($domain, $previousState);
+            } catch (\Throwable $e) {
+                Log::warning('DNS audit failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+            }
+        }
+        Log::info('[DNS Audit] Completed audit for ' . $domains->count() . ' domains');
+    } catch (\Throwable $e) {
+        Log::error('DNS audit failed: ' . $e->getMessage());
+    }
+})->weeklyOn(1, '03:15')->name('warmup:dns-audit');

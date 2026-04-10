@@ -22,6 +22,8 @@ class SenderMailbox extends Model
         'bounce_rate_threshold', 'spam_rate_threshold', 'auto_pause_on_threshold',
         'ramp_down_active', 'consecutive_clean_days', 'ramp_down_percentage',
         'auto_paused_at', 'auto_pause_reason',
+        'placement_score', 'reputation_score', 'reputation_risk',
+        'last_placement_test_at', 'last_reputation_scan_at',
     ];
 
     protected $casts = [
@@ -34,6 +36,9 @@ class SenderMailbox extends Model
         'last_smtp_test_at' => 'datetime',
         'last_imap_test_at' => 'datetime',
         'auto_paused_at' => 'datetime',
+        'last_placement_test_at' => 'datetime',
+        'last_reputation_scan_at' => 'datetime',
+        'placement_score' => 'decimal:2',
     ];
 
     protected $hidden = [
@@ -68,6 +73,26 @@ class SenderMailbox extends Model
     public function pauseRules(): HasMany
     {
         return $this->morphMany(PauseRule::class, 'pausable');
+    }
+
+    public function placementTests(): HasMany
+    {
+        return $this->hasMany(PlacementTest::class);
+    }
+
+    public function bounceEvents(): HasMany
+    {
+        return $this->hasMany(BounceEvent::class);
+    }
+
+    public function reputationScores(): HasMany
+    {
+        return $this->hasMany(ReputationScore::class);
+    }
+
+    public function strategyLogs(): HasMany
+    {
+        return $this->hasMany(SendingStrategyLog::class);
     }
 
     public function isAvailable(): bool

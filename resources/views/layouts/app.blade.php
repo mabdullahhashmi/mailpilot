@@ -179,6 +179,10 @@
                     <i data-lucide="bar-chart-3" class="w-5 h-5 flex-shrink-0"></i>
                     <span x-show="sidebarOpen" x-transition>Progress Report</span>
                 </a>
+                <a href="{{ route('dashboard.deliverability') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.deliverability') ? 'active' : '' }}">
+                    <i data-lucide="radar" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>Deliverability</span>
+                </a>
 
                 <p x-show="sidebarOpen" class="px-3 mt-6 mb-2 text-[10px] font-semibold tracking-widest uppercase text-zinc-600">System</p>
 

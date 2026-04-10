@@ -27,6 +27,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dns-health', [DashboardPageController::class, 'dnsHealth'])->name('dashboard.dns-health');
     Route::get('/system-health', [DashboardPageController::class, 'systemHealth'])->name('dashboard.system-health');
     Route::get('/progress-report', [DashboardPageController::class, 'progressReport'])->name('dashboard.progress-report');
+    Route::get('/deliverability', [DashboardPageController::class, 'deliverability'])->name('dashboard.deliverability');
     Route::get('/diagnostics', [DashboardPageController::class, 'diagnostics'])->name('dashboard.diagnostics');
 });
 
@@ -121,4 +122,24 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('diagnostics/seed-health/{id}/re-enable', [\App\Http\Controllers\Api\DiagnosticController::class, 'reEnableSeed']);
     Route::get('diagnostics/content-warnings/{senderId}', [\App\Http\Controllers\Api\DiagnosticController::class, 'contentWarnings']);
     Route::get('diagnostics/history', [\App\Http\Controllers\Api\DiagnosticController::class, 'snapshotHistory']);
+
+    // Deliverability Intelligence (Phase I)
+    Route::get('deliverability/overview', [\App\Http\Controllers\Api\DeliverabilityController::class, 'overview']);
+    Route::post('deliverability/placement/test', [\App\Http\Controllers\Api\DeliverabilityController::class, 'runPlacementTest']);
+    Route::get('deliverability/placement/{senderId}/history', [\App\Http\Controllers\Api\DeliverabilityController::class, 'placementHistory']);
+    Route::get('deliverability/placement/test/{testId}', [\App\Http\Controllers\Api\DeliverabilityController::class, 'placementTestDetail']);
+    Route::get('deliverability/bounces', [\App\Http\Controllers\Api\DeliverabilityController::class, 'bounceOverview']);
+    Route::get('deliverability/bounces/{senderId}', [\App\Http\Controllers\Api\DeliverabilityController::class, 'senderBounces']);
+    Route::get('deliverability/bounces/suppression-candidates', [\App\Http\Controllers\Api\DeliverabilityController::class, 'suppressionCandidates']);
+    Route::post('deliverability/bounces/suppress', [\App\Http\Controllers\Api\DeliverabilityController::class, 'suppressEmail']);
+    Route::get('deliverability/bounce-log', [\App\Http\Controllers\Api\DeliverabilityController::class, 'bounceLog']);
+    Route::get('deliverability/reputation', [\App\Http\Controllers\Api\DeliverabilityController::class, 'reputationOverview']);
+    Route::get('deliverability/reputation/domain/{domainId}', [\App\Http\Controllers\Api\DeliverabilityController::class, 'domainReputation']);
+    Route::get('deliverability/reputation/sender/{senderId}', [\App\Http\Controllers\Api\DeliverabilityController::class, 'senderReputation']);
+    Route::post('deliverability/reputation/scan', [\App\Http\Controllers\Api\DeliverabilityController::class, 'runReputationScan']);
+    Route::get('deliverability/strategy', [\App\Http\Controllers\Api\DeliverabilityController::class, 'strategyOverview']);
+    Route::get('deliverability/strategy/{senderId}/analyze', [\App\Http\Controllers\Api\DeliverabilityController::class, 'analyzeSender']);
+    Route::post('deliverability/strategy/{senderId}/apply', [\App\Http\Controllers\Api\DeliverabilityController::class, 'applyStrategy']);
+    Route::get('deliverability/strategy/{senderId}/history', [\App\Http\Controllers\Api\DeliverabilityController::class, 'senderStrategyHistory']);
+    Route::post('deliverability/strategy/run', [\App\Http\Controllers\Api\DeliverabilityController::class, 'runStrategyAnalysis']);
 });
