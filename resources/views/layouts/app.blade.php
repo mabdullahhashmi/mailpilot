@@ -91,8 +91,33 @@
 
         .modal-overlay { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
 
-        .input-dark { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; }
+        .input-dark { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; color-scheme: dark; }
         .input-dark:focus { background: rgba(255,255,255,0.08); border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); outline: none; }
+
+        /* Force dark background on all select dropdowns */
+        select, select.input-dark {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2371717a' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px !important;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            color-scheme: dark;
+        }
+        select:not(.input-dark) {
+            background-color: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #d4d4d8;
+        }
+        select option {
+            background-color: #1a1a2e;
+            color: #e4e4e7;
+        }
+        select option:checked, select option:hover {
+            background-color: #4f46e5;
+            color: #ffffff;
+        }
     </style>
 </head>
 <body class="h-full bg-surface-950 text-zinc-300 font-sans antialiased" x-data="{ sidebarOpen: true, mobileMenu: false }">

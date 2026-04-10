@@ -143,9 +143,13 @@
                         <input type="text" x-model="form.smtp_username" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
                     </div>
                     <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Password *</label>
-                        <input type="password" x-model="form.smtp_password" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" :required="!editMode">
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium" x-text="form.provider === 'google' ? 'App Password *' : 'SMTP Password *'"></label>
+                        <input type="password" x-model="form.smtp_password" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" :required="!editMode" :placeholder="form.provider === 'google' ? '16-char app password' : ''">
                     </div>
+                </div>
+                <div x-show="form.provider === 'google'" class="flex items-start gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                    <i data-lucide="info" class="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5"></i>
+                    <p class="text-blue-300 text-xs">Gmail requires an <strong>App Password</strong>, not your account password. Go to <span class="font-mono">myaccount.google.com → Security → 2-Step Verification → App passwords</span> to generate one.</p>
                 </div>
                 <div class="grid grid-cols-3 gap-3">
                     <div>
