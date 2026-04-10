@@ -38,7 +38,7 @@ Schedule::call(function () {
         Log::error('Warmup daily planner failed: ' . $e->getMessage(), ['exception' => $e]);
         $diagnostic->recordHeartbeat('warmup:daily-plan', false, $e->getMessage(), 1440);
     }
-})->dailyAt('06:00')->name('warmup:daily-plan')->withoutOverlapping();
+})->dailyAt('06:00')->name('warmup:daily-plan')->withoutOverlapping()->runInBackground();
 
 // Scheduler: processes due events every 2 minutes
 Schedule::call(function () {
@@ -51,7 +51,7 @@ Schedule::call(function () {
         Log::error('Warmup scheduler failed: ' . $e->getMessage(), ['exception' => $e]);
         $diagnostic->recordHeartbeat('warmup:process-events', false, $e->getMessage(), 2);
     }
-})->everyTwoMinutes()->name('warmup:process-events')->withoutOverlapping();
+})->everyTwoMinutes()->name('warmup:process-events')->withoutOverlapping()->runInBackground();
 
 // Health updates: run daily at midnight
 Schedule::call(function () {
@@ -60,6 +60,7 @@ Schedule::call(function () {
         $senders = \App\Models\SenderMailbox::where('status', 'active')->get();
         $healthService = app(\App\Services\HealthService::class);
         $safetyService = app(\App\Services\SafetyService::class);
+        $failedCount = 0;
         foreach ($senders as $sender) {
             try {
                 $healthService->updateDailyHealth($sender);
@@ -67,7 +68,17 @@ Schedule::call(function () {
                 $safetyService->evaluateDailyRecovery($sender);
             } catch (\Throwable $e) {
                 Log::warning('Health update failed for sender #' . $sender->id . ': ' . $e->getMessage());
+                $failedCount++;
             }
+        }
+        if ($failedCount > 0 && $failedCount > $senders->count() * 0.1) {
+            \App\Models\SystemAlert::create([
+                'title' => 'Health Update Batch Failure',
+                'message' => "{$failedCount}/{$senders->count()} senders failed health update. Check logs for details.",
+                'severity' => $failedCount > $senders->count() * 0.5 ? 'critical' : 'warning',
+                'context_type' => 'system',
+                'context_id' => null,
+            ]);
         }
         \App\Models\SystemSetting::set('last_health_run', now()->toDateTimeString(), 'cron');
         $diagnostic->recordHeartbeat('warmup:health-update', true, null, 1440);

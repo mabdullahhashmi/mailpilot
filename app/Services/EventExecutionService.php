@@ -21,6 +21,7 @@ class EventExecutionService
         private ContentGuardService $contentGuard,
         private SeedHealthService $seedHealth,
         private SlotSchedulerService $slotScheduler,
+        private BounceIntelligenceService $bounceIntelligence,
     ) {}
 
     /**
@@ -96,7 +97,12 @@ class EventExecutionService
         $subject = $thread->subject_line ?: $this->content->generateSubject($template);
 
         // Send email via SMTP
-        $messageId = $this->sendEmail($sender, $seed, $subject, $body);
+        try {
+            $messageId = $this->sendEmail($sender, $seed, $subject, $body);
+        } catch (\Throwable $e) {
+            $this->bounceIntelligence->recordBounce($sender, $seed->email_address, $e->getMessage(), $event->id, $thread->id);
+            throw $e;
+        }
 
         // Record content fingerprint for anti-pattern protection
         $this->contentGuard->recordUsage($sender, $seed->email_address, $body, $template);
@@ -156,12 +162,17 @@ class EventExecutionService
         $body = $this->content->generateReplyBody($template, $seed, $sender, $lastMessage);
 
         // Send reply via seed SMTP
-        $messageId = $this->sendEmail(
-            $seed, $sender,
-            'Re: ' . $thread->subject_line,
-            $body,
-            $lastMessage?->provider_message_id
-        );
+        try {
+            $messageId = $this->sendEmail(
+                $seed, $sender,
+                'Re: ' . $thread->subject_line,
+                $body,
+                $lastMessage?->provider_message_id
+            );
+        } catch (\Throwable $e) {
+            $this->bounceIntelligence->recordBounce($sender, $seed->email_address, $e->getMessage(), $event->id, $thread->id);
+            throw $e;
+        }
 
         $message = ThreadMessage::create([
             'thread_id' => $thread->id,
@@ -201,12 +212,17 @@ class EventExecutionService
         $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread, $lastMessage?->body);
         $body = $this->content->generateReplyBody($template, $sender, $seed, $lastMessage);
 
-        $messageId = $this->sendEmail(
-            $sender, $seed,
-            'Re: ' . $thread->subject_line,
-            $body,
-            $lastMessage?->provider_message_id
-        );
+        try {
+            $messageId = $this->sendEmail(
+                $sender, $seed,
+                'Re: ' . $thread->subject_line,
+                $body,
+                $lastMessage?->provider_message_id
+            );
+        } catch (\Throwable $e) {
+            $this->bounceIntelligence->recordBounce($sender, $seed->email_address, $e->getMessage(), $event->id, $thread->id);
+            throw $e;
+        }
 
         $message = ThreadMessage::create([
             'thread_id' => $thread->id,
@@ -464,7 +480,11 @@ class EventExecutionService
         string $body,
         ?string $inReplyTo = null
     ): string {
-        $password = Crypt::decryptString($fromMailbox->smtp_password);
+        try {
+            $password = Crypt::decryptString($fromMailbox->smtp_password);
+        } catch (\Exception $e) {
+            throw new \RuntimeException("SMTP password decryption failed for {$fromMailbox->email_address}: " . $e->getMessage());
+        }
 
         $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
             $fromMailbox->smtp_host,
@@ -512,17 +532,11 @@ class EventExecutionService
             return false;
         }
 
-        $flags = $encryption === 'ssl' ? '/imap/ssl/validate-cert' : '/imap/notls';
+        $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
         $path = "{{$host}:{$port}{$flags}}INBOX";
 
         try {
             $imap = @imap_open($path, $username, $password, 0, 1);
-            if (!$imap) {
-                // Try without certificate validation
-                $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
-                $path = "{{$host}:{$port}{$flags}}INBOX";
-                $imap = @imap_open($path, $username, $password, 0, 1);
-            }
             return $imap ?: false;
         } catch (\Exception $e) {
             Log::warning("[WarmupEngine] IMAP connection failed for {$mailbox->email_address}: {$e->getMessage()}");

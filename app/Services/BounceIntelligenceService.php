@@ -114,39 +114,51 @@ class BounceIntelligenceService
      */
     public function getOverallBounceStats(int $days = 7): array
     {
-        $bounces = BounceEvent::where('bounced_at', '>=', now()->subDays($days))->get();
+        $cutoff = now()->subDays($days);
 
-        $byType = $bounces->groupBy('bounce_type')->map->count();
-        $byProvider = $bounces->groupBy('provider')->map->count();
+        // Use DB aggregation instead of loading all records
+        $byType = BounceEvent::where('bounced_at', '>=', $cutoff)
+            ->selectRaw('bounce_type, COUNT(*) as count')
+            ->groupBy('bounce_type')
+            ->pluck('count', 'bounce_type')
+            ->toArray();
 
-        // Identify top offending senders
-        $topSenders = $bounces->groupBy('sender_mailbox_id')
-            ->map(function ($group) {
-                return [
-                    'count' => $group->count(),
-                    'hard' => $group->where('bounce_type', 'hard')->count(),
-                ];
-            })
-            ->sortByDesc('count')
-            ->take(5);
+        $byProvider = BounceEvent::where('bounced_at', '>=', $cutoff)
+            ->selectRaw('provider, COUNT(*) as count')
+            ->groupBy('provider')
+            ->pluck('count', 'provider')
+            ->toArray();
+
+        $total = array_sum($byType);
+
+        // Identify top offending senders via DB aggregation
+        $topSenderStats = BounceEvent::where('bounced_at', '>=', $cutoff)
+            ->selectRaw('sender_mailbox_id, COUNT(*) as total_count')
+            ->selectRaw("SUM(CASE WHEN bounce_type = 'hard' THEN 1 ELSE 0 END) as hard_count")
+            ->groupBy('sender_mailbox_id')
+            ->orderByDesc('total_count')
+            ->take(5)
+            ->get();
+
+        $senderIds = $topSenderStats->pluck('sender_mailbox_id')->toArray();
+        $senders = SenderMailbox::whereIn('id', $senderIds)->pluck('email_address', 'id');
 
         $senderDetails = [];
-        foreach ($topSenders as $senderId => $stats) {
-            $sender = SenderMailbox::find($senderId);
-            if ($sender) {
+        foreach ($topSenderStats as $stat) {
+            if (isset($senders[$stat->sender_mailbox_id])) {
                 $senderDetails[] = [
-                    'id' => $senderId,
-                    'email' => $sender->email_address,
-                    'total' => $stats['count'],
-                    'hard' => $stats['hard'],
+                    'id' => $stat->sender_mailbox_id,
+                    'email' => $senders[$stat->sender_mailbox_id],
+                    'total' => $stat->total_count,
+                    'hard' => $stat->hard_count,
                 ];
             }
         }
 
         return [
-            'total' => $bounces->count(),
-            'by_type' => $byType->toArray(),
-            'by_provider' => $byProvider->toArray(),
+            'total' => $total,
+            'by_type' => $byType,
+            'by_provider' => $byProvider,
             'top_offending_senders' => $senderDetails,
             'suppression_candidates' => $this->getSuppressionCandidates(),
         ];
@@ -190,28 +202,28 @@ class BounceIntelligenceService
      */
     public function getRootCauseSummary(int $days = 7): array
     {
-        $bounces = BounceEvent::where('bounced_at', '>=', now()->subDays($days))
+        $cutoff = now()->subDays($days);
+
+        // Use DB aggregation instead of loading all bounces
+        $groups = BounceEvent::where('bounced_at', '>=', $cutoff)
+            ->selectRaw("CONCAT(COALESCE(provider, 'unknown'), ':', bounce_type) as group_key")
+            ->selectRaw('provider, bounce_type, COUNT(*) as group_count')
+            ->selectRaw("GROUP_CONCAT(DISTINCT bounce_code ORDER BY bounce_code SEPARATOR ',') as codes")
+            ->groupByRaw("CONCAT(COALESCE(provider, 'unknown'), ':', bounce_type), provider, bounce_type")
+            ->orderByDesc('group_count')
             ->get();
 
         $causes = [];
-
-        // Group by provider + bounce type for pattern analysis
-        $providerGroups = $bounces->groupBy(function ($b) {
-            return ($b->provider ?? 'unknown') . ':' . $b->bounce_type;
-        });
-
-        foreach ($providerGroups as $key => $group) {
-            [$provider, $type] = explode(':', $key);
+        foreach ($groups as $group) {
+            $sampleCodes = $group->codes ? array_slice(array_filter(explode(',', $group->codes)), 0, 5) : [];
             $causes[] = [
-                'provider' => $provider,
-                'bounce_type' => $type,
-                'count' => $group->count(),
-                'sample_codes' => $group->pluck('bounce_code')->filter()->unique()->take(5)->values()->toArray(),
-                'recommendation' => $this->getRecommendation($type, $provider, $group->count()),
+                'provider' => $group->provider ?? 'unknown',
+                'bounce_type' => $group->bounce_type,
+                'count' => $group->group_count,
+                'sample_codes' => array_values($sampleCodes),
+                'recommendation' => $this->getRecommendation($group->bounce_type, $group->provider ?? 'unknown', $group->group_count),
             ];
         }
-
-        usort($causes, fn ($a, $b) => $b['count'] <=> $a['count']);
 
         return $causes;
     }

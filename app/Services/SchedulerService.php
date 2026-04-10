@@ -69,11 +69,16 @@ class SchedulerService
                     $succeeded++;
                 }
             } catch (\Throwable $e) {
-                Log::error("Scheduler: Event #{$event->id} failed: {$e->getMessage()}");
+                Log::error("Scheduler: Event #{$event->id} ({$event->event_type}) failed: " . get_class($e) . ': ' . $e->getMessage(), [
+                    'event_id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
 
                 $event->update([
                     'retry_count' => $event->retry_count + 1,
-                    'failure_reason' => $e->getMessage(),
+                    'failure_reason' => substr(get_class($e) . ': ' . $e->getMessage(), 0, 500),
                     'lock_token' => null,
                     'lock_expires_at' => null,
                 ]);

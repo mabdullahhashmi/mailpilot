@@ -9,6 +9,7 @@ use App\Models\BounceEvent;
 use App\Models\PlacementTest;
 use App\Models\ReputationScore;
 use App\Models\WarmupCampaign;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SendingStrategyService
@@ -46,8 +47,10 @@ class SendingStrategyService
         $log = $this->analyze($sender);
 
         if ($log->recommendation !== 'maintain' && $log->recommended_daily_cap !== $sender->daily_send_cap) {
-            $sender->update(['daily_send_cap' => $log->recommended_daily_cap]);
-            $log->update(['was_applied' => true]);
+            DB::transaction(function () use ($sender, $log) {
+                $sender->update(['daily_send_cap' => $log->recommended_daily_cap]);
+                $log->update(['was_applied' => true]);
+            });
             Log::info("[Strategy] Applied {$log->recommendation} for sender #{$sender->id}: cap {$sender->daily_send_cap} -> {$log->recommended_daily_cap}");
         }
 

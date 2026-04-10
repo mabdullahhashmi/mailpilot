@@ -67,6 +67,16 @@ class PlacementTestService
             // In production this runs as a scheduled follow-up
             $test->update(['seeds_tested' => count($sentToSeeds)]);
 
+            // Require minimum seed coverage for valid results
+            if (count($sentToSeeds) < min(3, $seeds->count())) {
+                $test->update([
+                    'status' => 'failed',
+                    'failure_reason' => 'Only ' . count($sentToSeeds) . '/' . $seeds->count() . ' seeds reachable — insufficient for valid test',
+                    'completed_at' => now(),
+                ]);
+                return $test;
+            }
+
             // Check placement after a delay (2 minutes for delivery)
             $this->checkPlacements($test, $sentToSeeds, $probeSubject);
 
@@ -286,7 +296,11 @@ class PlacementTestService
 
     private function sendProbe(SenderMailbox $sender, SeedMailbox $seed, string $subject, string $body): void
     {
-        $password = Crypt::decryptString($sender->smtp_password);
+        try {
+            $password = Crypt::decryptString($sender->smtp_password);
+        } catch (\Exception $e) {
+            throw new \RuntimeException("SMTP password decryption failed for {$sender->email_address}");
+        }
 
         $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
             $sender->smtp_host,

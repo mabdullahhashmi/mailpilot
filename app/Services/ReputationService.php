@@ -11,6 +11,7 @@ use App\Models\MailboxHealthLog;
 use App\Models\PlacementTest;
 use App\Models\WarmupEvent;
 use App\Models\SystemAlert;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ReputationService
@@ -37,49 +38,51 @@ class ReputationService
 
         $riskLevel = $this->determineRiskLevel($overall);
 
-        $score = ReputationScore::updateOrCreate(
-            [
-                'domain_id' => $domain->id,
-                'sender_mailbox_id' => null,
-                'score_date' => today(),
-            ],
-            [
-                'overall_score' => $overall,
-                'dns_score' => $dnsScore,
-                'engagement_score' => $engagementScore,
-                'bounce_score' => $bounceScore,
-                'placement_score' => $placementScore,
-                'volume_score' => $volumeScore,
-                'risk_level' => $riskLevel,
-                'breakdown' => [
-                    'dns' => ['score' => $dnsScore, 'weight' => '25%'],
-                    'engagement' => ['score' => $engagementScore, 'weight' => '25%'],
-                    'bounce' => ['score' => $bounceScore, 'weight' => '25%'],
-                    'placement' => ['score' => $placementScore, 'weight' => '15%'],
-                    'volume' => ['score' => $volumeScore, 'weight' => '10%'],
+        return DB::transaction(function () use ($domain, $overall, $dnsScore, $engagementScore, $bounceScore, $placementScore, $volumeScore, $riskLevel) {
+            $score = ReputationScore::updateOrCreate(
+                [
+                    'domain_id' => $domain->id,
+                    'sender_mailbox_id' => null,
+                    'score_date' => today(),
                 ],
-            ]
-        );
+                [
+                    'overall_score' => $overall,
+                    'dns_score' => $dnsScore,
+                    'engagement_score' => $engagementScore,
+                    'bounce_score' => $bounceScore,
+                    'placement_score' => $placementScore,
+                    'volume_score' => $volumeScore,
+                    'risk_level' => $riskLevel,
+                    'breakdown' => [
+                        'dns' => ['score' => $dnsScore, 'weight' => '25%'],
+                        'engagement' => ['score' => $engagementScore, 'weight' => '25%'],
+                        'bounce' => ['score' => $bounceScore, 'weight' => '25%'],
+                        'placement' => ['score' => $placementScore, 'weight' => '15%'],
+                        'volume' => ['score' => $volumeScore, 'weight' => '10%'],
+                    ],
+                ]
+            );
 
-        // Update domain fields
-        $domain->update([
-            'reputation_score' => $overall,
-            'reputation_risk_level' => $riskLevel,
-            'last_reputation_scan_at' => now(),
-        ]);
-
-        // Alert on high risk
-        if ($riskLevel === 'critical' || $riskLevel === 'high') {
-            SystemAlert::create([
-                'title' => "Domain reputation risk: {$domain->domain_name}",
-                'message' => "Reputation score: {$overall}/100 ({$riskLevel}). DNS: {$dnsScore}, Engagement: {$engagementScore}, Bounces: {$bounceScore}",
-                'severity' => $riskLevel === 'critical' ? 'critical' : 'warning',
-                'context_type' => 'domain',
-                'context_id' => $domain->id,
+            // Update domain fields
+            $domain->update([
+                'reputation_score' => $overall,
+                'reputation_risk_level' => $riskLevel,
+                'last_reputation_scan_at' => now(),
             ]);
-        }
 
-        return $score;
+            // Alert on high risk
+            if ($riskLevel === 'critical' || $riskLevel === 'high') {
+                SystemAlert::create([
+                    'title' => "Domain reputation risk: {$domain->domain_name}",
+                    'message' => "Reputation score: {$overall}/100 ({$riskLevel}). DNS: {$dnsScore}, Engagement: {$engagementScore}, Bounces: {$bounceScore}",
+                    'severity' => $riskLevel === 'critical' ? 'critical' : 'warning',
+                    'context_type' => 'domain',
+                    'context_id' => $domain->id,
+                ]);
+            }
+
+            return $score;
+        });
     }
 
     /**
@@ -105,38 +108,40 @@ class ReputationService
 
         $riskLevel = $this->determineRiskLevel($overall);
 
-        $score = ReputationScore::updateOrCreate(
-            [
-                'domain_id' => $domain?->id,
-                'sender_mailbox_id' => $sender->id,
-                'score_date' => today(),
-            ],
-            [
-                'overall_score' => $overall,
-                'dns_score' => $dnsScore,
-                'engagement_score' => $engagementScore,
-                'bounce_score' => $bounceScore,
-                'placement_score' => $placementScore,
-                'volume_score' => $volumeScore,
-                'risk_level' => $riskLevel,
-                'breakdown' => [
-                    'dns' => ['score' => $dnsScore, 'weight' => '20%'],
-                    'engagement' => ['score' => $engagementScore, 'weight' => '30%'],
-                    'bounce' => ['score' => $bounceScore, 'weight' => '25%'],
-                    'placement' => ['score' => $placementScore, 'weight' => '15%'],
-                    'volume' => ['score' => $volumeScore, 'weight' => '10%'],
+        return DB::transaction(function () use ($domain, $sender, $overall, $dnsScore, $engagementScore, $bounceScore, $placementScore, $volumeScore, $riskLevel) {
+            $score = ReputationScore::updateOrCreate(
+                [
+                    'domain_id' => $domain?->id,
+                    'sender_mailbox_id' => $sender->id,
+                    'score_date' => today(),
                 ],
-            ]
-        );
+                [
+                    'overall_score' => $overall,
+                    'dns_score' => $dnsScore,
+                    'engagement_score' => $engagementScore,
+                    'bounce_score' => $bounceScore,
+                    'placement_score' => $placementScore,
+                    'volume_score' => $volumeScore,
+                    'risk_level' => $riskLevel,
+                    'breakdown' => [
+                        'dns' => ['score' => $dnsScore, 'weight' => '20%'],
+                        'engagement' => ['score' => $engagementScore, 'weight' => '30%'],
+                        'bounce' => ['score' => $bounceScore, 'weight' => '25%'],
+                        'placement' => ['score' => $placementScore, 'weight' => '15%'],
+                        'volume' => ['score' => $volumeScore, 'weight' => '10%'],
+                    ],
+                ]
+            );
 
-        // Update sender fields
-        $sender->update([
-            'reputation_score' => $overall,
-            'reputation_risk' => $riskLevel,
-            'last_reputation_scan_at' => now(),
-        ]);
+            // Update sender fields
+            $sender->update([
+                'reputation_score' => $overall,
+                'reputation_risk' => $riskLevel,
+                'last_reputation_scan_at' => now(),
+            ]);
 
-        return $score;
+            return $score;
+        });
     }
 
     /**
@@ -147,21 +152,27 @@ class ReputationService
         $domainsScored = 0;
         $sendersScored = 0;
 
-        $domains = Domain::where('status', 'active')->get();
-        foreach ($domains as $domain) {
+        $domains = Domain::with('senderMailboxes')->where('status', 'active')->get();
+        foreach ($domains as $i => $domain) {
             try {
                 $this->scoreDomain($domain);
                 $domainsScored++;
+                if (($i + 1) % 50 === 0) {
+                    Log::info("[Reputation] Domain progress: " . ($i + 1) . "/{$domains->count()}");
+                }
             } catch (\Throwable $e) {
                 Log::warning("[Reputation] Failed to score domain {$domain->domain_name}: {$e->getMessage()}");
             }
         }
 
-        $senders = SenderMailbox::where('status', 'active')->get();
-        foreach ($senders as $sender) {
+        $senders = SenderMailbox::with('domain')->where('status', 'active')->get();
+        foreach ($senders as $i => $sender) {
             try {
                 $this->scoreSender($sender);
                 $sendersScored++;
+                if (($i + 1) % 100 === 0) {
+                    Log::info("[Reputation] Sender progress: " . ($i + 1) . "/{$senders->count()}");
+                }
             } catch (\Throwable $e) {
                 Log::warning("[Reputation] Failed to score sender {$sender->email_address}: {$e->getMessage()}");
             }
@@ -306,7 +317,9 @@ class ReputationService
 
     private function calculateDomainEngagement(Domain $domain): int
     {
-        $senderIds = $domain->senderMailboxes()->pluck('id');
+        $senderIds = $domain->relationLoaded('senderMailboxes')
+            ? $domain->senderMailboxes->pluck('id')
+            : $domain->senderMailboxes()->pluck('id');
         if ($senderIds->isEmpty()) return 50;
 
         $logs = MailboxHealthLog::whereIn('sender_mailbox_id', $senderIds)
@@ -332,7 +345,9 @@ class ReputationService
 
     private function calculateDomainBounceScore(Domain $domain): int
     {
-        $senderIds = $domain->senderMailboxes()->pluck('id');
+        $senderIds = $domain->relationLoaded('senderMailboxes')
+            ? $domain->senderMailboxes->pluck('id')
+            : $domain->senderMailboxes()->pluck('id');
         if ($senderIds->isEmpty()) return 100;
 
         $bounces7d = BounceEvent::whereIn('sender_mailbox_id', $senderIds)
@@ -369,7 +384,9 @@ class ReputationService
 
     private function calculateDomainPlacementScore(Domain $domain): int
     {
-        $senderIds = $domain->senderMailboxes()->pluck('id');
+        $senderIds = $domain->relationLoaded('senderMailboxes')
+            ? $domain->senderMailboxes->pluck('id')
+            : $domain->senderMailboxes()->pluck('id');
         if ($senderIds->isEmpty()) return 50;
 
         $recentTests = PlacementTest::whereIn('sender_mailbox_id', $senderIds)
@@ -384,7 +401,9 @@ class ReputationService
 
     private function calculateDomainVolumeScore(Domain $domain): int
     {
-        $senderIds = $domain->senderMailboxes()->pluck('id');
+        $senderIds = $domain->relationLoaded('senderMailboxes')
+            ? $domain->senderMailboxes->pluck('id')
+            : $domain->senderMailboxes()->pluck('id');
         if ($senderIds->isEmpty()) return 50;
 
         // Check for consistent sending (not erratic)

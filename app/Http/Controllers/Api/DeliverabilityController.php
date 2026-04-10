@@ -156,7 +156,7 @@ class DeliverabilityController extends Controller
     public function suppressEmail(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
+            'email' => 'required|email:rfc,dns',
         ]);
 
         if ($validator->fails()) {
