@@ -55,4 +55,24 @@ class DashboardPageController extends Controller
     {
         return view('dashboard.campaign-detail');
     }
+
+    public function senderHealth()
+    {
+        return view('dashboard.sender-health');
+    }
+
+    public function dnsHealth()
+    {
+        return view('dashboard.dns-health');
+    }
+
+    public function systemHealth()
+    {
+        return view('dashboard.system-health');
+    }
+
+    public function progressReport()
+    {
+        return view('dashboard.progress-report');
+    }
 }

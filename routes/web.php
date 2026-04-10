@@ -23,6 +23,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings', [DashboardPageController::class, 'settings'])->name('dashboard.settings');
     Route::get('/templates', [DashboardPageController::class, 'templates'])->name('dashboard.templates');
     Route::get('/campaigns/{id}', [DashboardPageController::class, 'campaignDetail'])->name('dashboard.campaign-detail');
+    Route::get('/sender-health', [DashboardPageController::class, 'senderHealth'])->name('dashboard.sender-health');
+    Route::get('/dns-health', [DashboardPageController::class, 'dnsHealth'])->name('dashboard.dns-health');
+    Route::get('/system-health', [DashboardPageController::class, 'systemHealth'])->name('dashboard.system-health');
+    Route::get('/progress-report', [DashboardPageController::class, 'progressReport'])->name('dashboard.progress-report');
 });
 
 // Protected API routes for warmup engine
@@ -84,4 +88,24 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     // CSV Import
     Route::post('import/senders', [\App\Http\Controllers\Api\ImportController::class, 'importSenders']);
     Route::post('import/seeds', [\App\Http\Controllers\Api\ImportController::class, 'importSeeds']);
+
+    // Sender Health (F1)
+    Route::get('sender-health', [\App\Http\Controllers\Api\SenderHealthController::class, 'index']);
+    Route::get('sender-health/{id}', [\App\Http\Controllers\Api\SenderHealthController::class, 'show']);
+
+    // DNS Health (F2)
+    Route::get('dns-health', [\App\Http\Controllers\Api\DnsHealthController::class, 'index']);
+    Route::post('dns-health/{id}/check', [\App\Http\Controllers\Api\DnsHealthController::class, 'check']);
+    Route::post('dns-health/check-all', [\App\Http\Controllers\Api\DnsHealthController::class, 'checkAll']);
+
+    // Blacklist Monitor (F3)
+    Route::post('blacklist/check', [\App\Http\Controllers\Api\BlacklistController::class, 'check']);
+    Route::post('blacklist/check-all', [\App\Http\Controllers\Api\BlacklistController::class, 'checkAll']);
+
+    // System Health (F4)
+    Route::get('system-health', [\App\Http\Controllers\Api\SystemHealthController::class, 'index']);
+
+    // Data Export (F5)
+    Route::get('export/event-logs', [\App\Http\Controllers\Api\ExportController::class, 'eventLogs']);
+    Route::get('export/sender-health', [\App\Http\Controllers\Api\ExportController::class, 'senderHealth']);
 });

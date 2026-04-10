@@ -163,6 +163,22 @@
                     <i data-lucide="activity" class="w-5 h-5 flex-shrink-0"></i>
                     <span x-show="sidebarOpen" x-transition>Event Logs</span>
                 </a>
+                <a href="{{ route('dashboard.sender-health') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.sender-health') ? 'active' : '' }}">
+                    <i data-lucide="heart-pulse" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>Sender Health</span>
+                </a>
+                <a href="{{ route('dashboard.dns-health') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.dns-health') ? 'active' : '' }}">
+                    <i data-lucide="shield-check" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>DNS & Blacklist</span>
+                </a>
+                <a href="{{ route('dashboard.system-health') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.system-health') ? 'active' : '' }}">
+                    <i data-lucide="server" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>System Health</span>
+                </a>
+                <a href="{{ route('dashboard.progress-report') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.progress-report') ? 'active' : '' }}">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>Progress Report</span>
+                </a>
 
                 <p x-show="sidebarOpen" class="px-3 mt-6 mb-2 text-[10px] font-semibold tracking-widest uppercase text-zinc-600">System</p>
 
