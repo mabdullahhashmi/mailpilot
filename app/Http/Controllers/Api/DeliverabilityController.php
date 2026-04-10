@@ -30,17 +30,22 @@ class DeliverabilityController extends Controller
 
     public function overview(): JsonResponse
     {
-        $placement = $this->placementService->getOverallStats();
-        $bounces = $this->bounceService->getOverallBounceStats(7);
-        $reputation = $this->reputationService->getDashboardData();
-        $strategy = $this->strategyService->getDashboardData();
+        $placement = [];
+        $bounces = [];
+        $reputation = [];
+        $strategy = [];
+
+        try { $placement = $this->placementService->getOverallStats(); } catch (\Throwable $e) {}
+        try { $bounces = $this->bounceService->getOverallBounceStats(7); } catch (\Throwable $e) {}
+        try { $reputation = $this->reputationService->getDashboardData(); } catch (\Throwable $e) {}
+        try { $strategy = $this->strategyService->getDashboardData(); } catch (\Throwable $e) {}
 
         // Overall risk assessment
-        $avgPlacement = $placement['avg_score'];
-        $totalBounces = $bounces['total'];
-        $avgReputation = $reputation['domains']['avg_score'];
-        $criticalDomains = $reputation['domains']['critical'];
-        $criticalSenders = $reputation['senders']['critical'];
+        $avgPlacement = $placement['avg_score'] ?? 0;
+        $totalBounces = $bounces['total'] ?? 0;
+        $avgReputation = $reputation['domains']['avg_score'] ?? 0;
+        $criticalDomains = $reputation['domains']['critical'] ?? 0;
+        $criticalSenders = $reputation['senders']['critical'] ?? 0;
 
         $overallStatus = 'healthy';
         if ($criticalDomains > 0 || $criticalSenders > 0 || $avgPlacement < 30) {
@@ -55,6 +60,10 @@ class DeliverabilityController extends Controller
             'bounces' => $bounces,
             'reputation' => $reputation,
             'strategy' => $strategy,
+            'senders' => SenderMailbox::where('status', 'active')
+                ->get(['id', 'email_address'])
+                ->map(fn ($s) => ['id' => $s->id, 'email' => $s->email_address])
+                ->values(),
         ]);
     }
 

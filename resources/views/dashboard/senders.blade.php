@@ -260,8 +260,8 @@ function sendersPage() {
             showToast('Testing SMTP connection...', 'info');
             try {
                 const res = await apiCall(`/api/warmup/sender-mailboxes/${id}/test-smtp`, 'POST');
-                showToast(res.success ? 'SMTP connected!' : 'SMTP failed: ' + res.error, res.success ? 'success' : 'error');
-            } catch(e) { showToast('Test failed', 'error'); }
+                showToast(res.success ? 'SMTP connected!' : 'SMTP failed: ' + res.message, res.success ? 'success' : 'error');
+            } catch(e) { showToast('Test failed: ' + e.message, 'error'); }
         },
 
         async togglePause(s) {

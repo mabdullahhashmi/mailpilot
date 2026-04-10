@@ -17,9 +17,14 @@ class SystemHealthController extends Controller
 {
     public function index(): JsonResponse
     {
-        // Queue stats
-        $queuePending = DB::table('jobs')->count();
-        $queueFailed = DB::table('failed_jobs')->count();
+        try {
+            // Queue stats
+            $queuePending = DB::table('jobs')->count();
+            $queueFailed = DB::table('failed_jobs')->count();
+        } catch (\Throwable $e) {
+            $queuePending = 0;
+            $queueFailed = 0;
+        }
 
         // Cron timestamps
         $lastScheduler = SystemSetting::get('cron_last_scheduler_run');
@@ -28,32 +33,32 @@ class SystemHealthController extends Controller
         $lastDns = SystemSetting::get('cron_last_dns_check');
 
         // Entity counts
-        $senders = SenderMailbox::selectRaw('
+        $senders = SenderMailbox::selectRaw("
             COUNT(*) as total,
-            SUM(CASE WHEN status = "active" THEN 1 ELSE 0 END) as active,
-            SUM(CASE WHEN status = "paused" OR is_paused = 1 THEN 1 ELSE 0 END) as paused
-        ')->first();
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN status = 'paused' OR is_paused = 1 THEN 1 ELSE 0 END) as paused
+        ")->first();
 
-        $seeds = SeedMailbox::selectRaw('
+        $seeds = SeedMailbox::selectRaw("
             COUNT(*) as total,
-            SUM(CASE WHEN status = "active" THEN 1 ELSE 0 END) as active
-        ')->first();
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active
+        ")->first();
 
-        $campaigns = WarmupCampaign::selectRaw('
+        $campaigns = WarmupCampaign::selectRaw("
             COUNT(*) as total,
-            SUM(CASE WHEN status = "active" THEN 1 ELSE 0 END) as active,
-            SUM(CASE WHEN status = "paused" THEN 1 ELSE 0 END) as paused
-        ')->first();
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN status = 'paused' THEN 1 ELSE 0 END) as paused
+        ")->first();
 
         $domains = Domain::count();
 
         // Events today
         $eventsToday = WarmupEvent::whereDate('executed_at', today())
-            ->selectRaw('
+            ->selectRaw("
                 COUNT(*) as total,
-                SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN status = "final_failed" THEN 1 ELSE 0 END) as failed
-            ')->first();
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'final_failed' THEN 1 ELSE 0 END) as failed
+            ")->first();
 
         // Pending events
         $pendingEvents = WarmupEvent::where('status', 'pending')
@@ -67,10 +72,14 @@ class SystemHealthController extends Controller
             ->get(['id', 'severity', 'title', 'message', 'created_at', 'is_read']);
 
         // Auto-pause count
-        $autoPauseCount = DB::table('pause_rules')
-            ->where('status', 'active')
-            ->where('reason', '!=', 'manual')
-            ->count();
+        try {
+            $autoPauseCount = DB::table('pause_rules')
+                ->where('status', 'active')
+                ->where('reason', '!=', 'manual')
+                ->count();
+        } catch (\Throwable $e) {
+            $autoPauseCount = 0;
+        }
 
         return response()->json([
             'queue' => [

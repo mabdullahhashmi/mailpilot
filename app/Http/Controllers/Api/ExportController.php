@@ -91,11 +91,11 @@ class ExportController extends Controller
             ->join('sender_mailboxes', 'mailbox_health_logs.sender_mailbox_id', '=', 'sender_mailboxes.id')
             ->select([
                 'mailbox_health_logs.id',
-                'sender_mailboxes.email',
+                'sender_mailboxes.email_address',
                 'mailbox_health_logs.log_date',
                 'mailbox_health_logs.warmup_day',
-                'mailbox_health_logs.sent_today',
-                'mailbox_health_logs.replied_today',
+                'mailbox_health_logs.sends_today',
+                'mailbox_health_logs.replies_today',
                 'mailbox_health_logs.health_score',
                 'mailbox_health_logs.readiness_score',
                 'mailbox_health_logs.failed_events',
@@ -123,11 +123,11 @@ class ExportController extends Controller
                 foreach ($logs as $log) {
                     fputcsv($handle, [
                         $log->id,
-                        $log->email,
+                        $log->email_address,
                         $log->log_date,
                         $log->warmup_day,
-                        $log->sent_today,
-                        $log->replied_today,
+                        $log->sends_today,
+                        $log->replies_today,
                         $log->health_score,
                         $log->readiness_score,
                         $log->failed_events,

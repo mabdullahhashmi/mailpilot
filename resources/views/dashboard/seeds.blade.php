@@ -115,8 +115,11 @@
         </div>
     </div>
 
-    <!-- Modal -->
-
+    <!-- Add/Edit Modal -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
+        <div class="w-full max-w-lg glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Seed' : 'Add Seed'"></h3>
                 <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <form @submit.prevent="saveSeed()" class="space-y-4">

@@ -584,7 +584,7 @@
             <p class="text-zinc-400 text-sm mb-4">Select a sender to test inbox placement across all seed mailboxes.</p>
             <select x-model="selectedPlacementSender" class="w-full px-4 py-3 rounded-xl text-sm bg-white/5 border border-white/10 text-zinc-300 focus:border-blue-500 outline-none mb-4">
                 <option value="">Select sender...</option>
-                <template x-for="s in overview?.strategy?.sender_caps || []" :key="s.id">
+                <template x-for="s in overview?.senders || []" :key="s.id">
                     <option :value="s.id" x-text="s.email"></option>
                 </template>
             </select>
