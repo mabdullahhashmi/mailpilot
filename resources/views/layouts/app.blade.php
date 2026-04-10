@@ -303,8 +303,8 @@
                 throw new Error('Session expired');
             }
             if (res.status === 419) {
-                window.location.reload();
-                throw new Error('CSRF token mismatch');
+                window.location.href = '/login';
+                throw new Error('Session expired. Please log in again.');
             }
             if (res.status === 429) {
                 throw new Error('Too many requests. Please wait a moment.');

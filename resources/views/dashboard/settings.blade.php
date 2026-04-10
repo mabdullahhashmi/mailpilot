@@ -311,4 +311,4 @@ function settingsPage() {
     };
 }
 </script>
-@endsection
+@endpush
