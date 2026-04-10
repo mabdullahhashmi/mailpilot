@@ -19,7 +19,7 @@
             <div class="glass rounded-2xl p-5 hover:border-white/10 transition">
                 <!-- Header -->
                 <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center gap-3">
+                    <a :href="'/campaigns/' + c.id" class="flex items-center gap-3 hover:opacity-80 transition">
                         <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="statusGradient(c.status)">
                             <i data-lucide="flame" class="w-5 h-5 text-white"></i>
                         </div>
@@ -27,7 +27,7 @@
                             <p class="text-white font-semibold text-sm" x-text="c.campaign_name"></p>
                             <p class="text-zinc-500 text-xs" x-text="'Day ' + (c.current_day_number || 1) + ' / ' + (c.profile?.total_days || '—')"></p>
                         </div>
-                    </div>
+                    </a>
                     <span class="badge px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-widest"
                           :class="statusBadge(c.status)" x-text="c.status"></span>
                 </div>

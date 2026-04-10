@@ -11,9 +11,14 @@
         <div class="flex items-center gap-3">
             <span class="text-zinc-500 text-sm" x-text="senders.length + ' mailboxes'"></span>
         </div>
-        <button @click="showModal = true; editMode = false; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i> Add Sender
-        </button>
+        <div class="flex items-center gap-2">
+            <button @click="showImport = true" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/10 transition">
+                <i data-lucide="upload" class="w-4 h-4"></i> CSV Import
+            </button>
+            <button @click="showModal = true; editMode = false; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i> Add Sender
+            </button>
+        </div>
     </div>
 
     <!-- Table -->
@@ -72,6 +77,48 @@
             </div>
             <p class="text-zinc-400 font-medium">No sender mailboxes yet</p>
             <p class="text-zinc-600 text-sm mt-1">Add your first sending email account to start warming up</p>
+        </div>
+    </div>
+
+    <!-- CSV Import Modal -->
+    <div x-show="showImport" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showImport = false">
+        <div class="w-full max-w-lg glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-white font-semibold text-lg">Import Senders from CSV</h3>
+                <button @click="showImport = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="mb-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <p class="text-blue-400 text-xs font-medium mb-1">Required CSV columns:</p>
+                <p class="text-blue-300/70 text-[11px] font-mono">email_address, smtp_host, smtp_port, smtp_username, smtp_password</p>
+                <p class="text-zinc-500 text-[11px] mt-1">Optional: smtp_encryption, provider, warmup_target_daily</p>
+            </div>
+            <form @submit.prevent="uploadCsv()" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">CSV File *</label>
+                    <input type="file" accept=".csv,.txt" @change="importFile = $event.target.files[0]"
+                           class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-brand-500/20 file:text-brand-400 file:cursor-pointer">
+                </div>
+                <div x-show="importResult" class="p-3 rounded-xl" :class="importResult?.skipped > 0 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'">
+                    <p class="text-sm font-medium" :class="importResult?.skipped > 0 ? 'text-amber-400' : 'text-emerald-400'">
+                        <span x-text="importResult?.imported || 0"></span> imported,
+                        <span x-text="importResult?.skipped || 0"></span> skipped
+                    </p>
+                    <template x-if="importResult?.errors?.length">
+                        <ul class="mt-2 space-y-0.5">
+                            <template x-for="err in importResult.errors" :key="err">
+                                <li class="text-red-400/80 text-[11px]" x-text="err"></li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" @click="showImport = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Close</button>
+                    <button type="submit" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="importing || !importFile">
+                        <span x-show="!importing">Upload & Import</span>
+                        <span x-show="importing">Importing...</span>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -150,9 +197,13 @@ function sendersPage() {
     return {
         senders: [],
         showModal: false,
+        showImport: false,
         editMode: false,
         editId: null,
         saving: false,
+        importFile: null,
+        importing: false,
+        importResult: null,
         form: {},
 
         async init() {
@@ -220,6 +271,29 @@ function sendersPage() {
                 showToast(`Sender ${action}d`);
                 await this.load();
             } catch(e) { showToast('Error', 'error'); }
+        },
+
+        async uploadCsv() {
+            if (!this.importFile) return;
+            this.importing = true;
+            this.importResult = null;
+            try {
+                const fd = new FormData();
+                fd.append('csv_file', this.importFile);
+                const res = await fetch('/api/warmup/import/senders', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: fd
+                });
+                if (!res.ok) { const err = await res.json(); throw new Error(err.error || err.message || 'Import failed'); }
+                this.importResult = await res.json();
+                showToast(`Imported ${this.importResult.imported} senders`, 'success');
+                await this.load();
+            } catch(e) { showToast('Error: ' + e.message, 'error'); }
+            this.importing = false;
         }
     };
 }

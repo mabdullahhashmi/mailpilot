@@ -70,3 +70,9 @@ Schedule::call(function () {
         Log::error('Warmup DNS check failed: ' . $e->getMessage(), ['exception' => $e]);
     }
 })->weeklyOn(1, '03:00')->name('warmup:dns-check');
+
+// Queue worker: process queued warmup jobs every minute
+Schedule::command('queue:work database --queue=warmup --stop-when-empty --max-time=50')
+    ->everyMinute()
+    ->name('warmup:queue-worker')
+    ->withoutOverlapping();

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\WarmupEvent;
 use App\Models\SchedulerRun;
+use App\Jobs\ProcessWarmupEvent;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
@@ -57,9 +58,16 @@ class SchedulerService
             $processed++;
 
             try {
-                $event->update(['status' => 'executing']);
-                $this->executor->execute($event);
-                $succeeded++;
+                // Dispatch to queue for async execution
+                if (config('queue.default') !== 'sync') {
+                    ProcessWarmupEvent::dispatch($event->id, $lockToken);
+                    $succeeded++;
+                } else {
+                    // Fallback: execute synchronously if queue is sync
+                    $event->update(['status' => 'executing']);
+                    $this->executor->execute($event);
+                    $succeeded++;
+                }
             } catch (\Throwable $e) {
                 Log::error("Scheduler: Event #{$event->id} failed: {$e->getMessage()}");
 

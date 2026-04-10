@@ -45,4 +45,14 @@ class DashboardPageController extends Controller
     {
         return view('dashboard.settings');
     }
+
+    public function templates()
+    {
+        return view('dashboard.templates');
+    }
+
+    public function campaignDetail(int $id)
+    {
+        return view('dashboard.campaign-detail');
+    }
 }

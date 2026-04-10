@@ -8,6 +8,7 @@ use App\Models\Domain;
 use App\Models\WarmupEvent;
 use App\Models\PauseRule;
 use App\Models\WarmupCampaign;
+use App\Models\SystemAlert;
 use Illuminate\Support\Facades\Log;
 
 class SafetyService
@@ -64,12 +65,12 @@ class SafetyService
             throw new \RuntimeException("Domain #{$domain->id} has reached daily cap");
         }
 
-        $pauseRule = PauseRule::where('pauseable_type', SenderMailbox::class)
-            ->where('pauseable_id', $sender->id)
-            ->where('is_active', true)
+        $pauseRule = PauseRule::where('pausable_type', SenderMailbox::class)
+            ->where('pausable_id', $sender->id)
+            ->where('status', 'active')
             ->where(function ($q) {
-                $q->whereNull('pause_until')
-                  ->orWhere('pause_until', '>', now());
+                $q->whereNull('auto_resume_at')
+                  ->orWhere('auto_resume_at', '>', now());
             })
             ->first();
 
@@ -113,13 +114,22 @@ class SafetyService
                 $mailbox->update(['status' => 'paused']);
 
                 PauseRule::create([
-                    'pauseable_type' => $modelClass,
-                    'pauseable_id' => $event->actor_mailbox_id,
-                    'reason' => "Auto-paused: {$recentFailures} consecutive failures in 24h",
-                    'pause_type' => 'error_threshold',
-                    'is_active' => true,
-                    'pause_until' => now()->addHours(24),
+                    'pausable_type' => $modelClass,
+                    'pausable_id' => $event->actor_mailbox_id,
+                    'reason' => 'repeated_failures',
+                    'details' => "Auto-paused: {$recentFailures} consecutive failures in 24h",
+                    'paused_at' => now(),
+                    'auto_resume_at' => now()->addHours(24),
+                    'status' => 'active',
                 ]);
+
+                SystemAlert::fire(
+                    'critical',
+                    'Mailbox Auto-Paused',
+                    "{$event->actor_type} #{$event->actor_mailbox_id} ({$mailbox->email_address}) auto-paused after {$recentFailures} consecutive failures in 24h",
+                    $event->actor_type === 'sender' ? 'sender_mailbox' : 'seed_mailbox',
+                    $event->actor_mailbox_id
+                );
 
                 Log::warning("SafetyService: Auto-paused {$event->actor_type} #{$event->actor_mailbox_id} after {$recentFailures} failures");
             }

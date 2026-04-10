@@ -137,6 +137,10 @@
                     <i data-lucide="sliders-horizontal" class="w-5 h-5 flex-shrink-0"></i>
                     <span x-show="sidebarOpen" x-transition>Profiles</span>
                 </a>
+                <a href="{{ route('dashboard.templates') }}" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 {{ request()->routeIs('dashboard.templates') ? 'active' : '' }}">
+                    <i data-lucide="file-text" class="w-5 h-5 flex-shrink-0"></i>
+                    <span x-show="sidebarOpen" x-transition>Templates</span>
+                </a>
 
                 <p x-show="sidebarOpen" class="px-3 mt-6 mb-2 text-[10px] font-semibold tracking-widest uppercase text-zinc-600">Mailboxes</p>
 
@@ -197,6 +201,40 @@
                         <div class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></div>
                         <span class="text-emerald-400 text-xs font-medium">Engine Active</span>
                     </div>
+
+                    <!-- Alert Bell -->
+                    <div x-data="alertBell()" x-init="init()" class="relative">
+                        <button @click="open = !open; if(open) loadAlerts()" class="relative p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition">
+                            <i data-lucide="bell" class="w-4.5 h-4.5"></i>
+                            <span x-show="unreadCount > 0" x-cloak class="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none" x-text="unreadCount > 9 ? '9+' : unreadCount"></span>
+                        </button>
+                        <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto glass rounded-2xl shadow-2xl border border-white/10 z-50 fade-in">
+                            <div class="flex items-center justify-between px-4 py-3 border-b border-white/5">
+                                <h4 class="text-white font-semibold text-sm">Alerts</h4>
+                                <button x-show="unreadCount > 0" @click="markAllRead()" class="text-[11px] text-brand-400 hover:text-brand-300 font-medium">Mark all read</button>
+                            </div>
+                            <div class="divide-y divide-white/5">
+                                <template x-for="a in alerts" :key="a.id">
+                                    <div class="px-4 py-3 hover:bg-white/[0.03] transition flex gap-3" :class="!a.is_read ? 'bg-white/[0.02]' : ''">
+                                        <div class="flex-shrink-0 mt-0.5">
+                                            <div class="w-2 h-2 rounded-full" :class="a.severity === 'critical' ? 'bg-red-500' : a.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'"></div>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-xs font-medium" :class="!a.is_read ? 'text-white' : 'text-zinc-400'" x-text="a.title"></p>
+                                            <p class="text-[11px] text-zinc-500 mt-0.5 truncate" x-text="a.message"></p>
+                                            <p class="text-[10px] text-zinc-600 mt-1" x-text="timeAgo(a.created_at)"></p>
+                                        </div>
+                                        <button @click.stop="dismissAlert(a.id)" class="flex-shrink-0 text-zinc-600 hover:text-red-400 p-1" title="Dismiss">
+                                            <i data-lucide="x" class="w-3 h-3"></i>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <div x-show="alerts.length === 0" class="px-4 py-8 text-center">
+                                <p class="text-zinc-500 text-xs">No alerts</p>
+                            </div>
+                        </div>
+                    </div>
                     <div class="flex items-center gap-2 px-2 py-1 rounded-lg text-zinc-400 text-xs">
                         <i data-lucide="user" class="w-3.5 h-3.5"></i>
                         <span>{{ Auth::user()->name ?? 'Admin' }}</span>
@@ -254,6 +292,43 @@
                 throw new Error(msg);
             }
             return res.json();
+        }
+
+        // Alert bell component
+        function alertBell() {
+            return {
+                open: false, alerts: [], unreadCount: 0,
+                async init() {
+                    try {
+                        const data = await apiCall('/api/warmup/alerts/unread-count');
+                        this.unreadCount = data.count || 0;
+                    } catch(e) {}
+                    setInterval(() => this.pollCount(), 60000);
+                },
+                async pollCount() {
+                    try { const d = await apiCall('/api/warmup/alerts/unread-count'); this.unreadCount = d.count || 0; } catch(e) {}
+                },
+                async loadAlerts() {
+                    try {
+                        this.alerts = await apiCall('/api/warmup/alerts');
+                        this.$nextTick(() => lucide.createIcons());
+                    } catch(e) { this.alerts = []; }
+                },
+                async markAllRead() {
+                    try { await apiCall('/api/warmup/alerts/mark-all-read', 'POST'); this.unreadCount = 0; this.alerts.forEach(a => a.is_read = true); } catch(e) {}
+                },
+                async dismissAlert(id) {
+                    try { await apiCall(`/api/warmup/alerts/${id}/dismiss`, 'POST'); this.alerts = this.alerts.filter(a => a.id !== id); await this.pollCount(); } catch(e) {}
+                },
+                timeAgo(dt) {
+                    if (!dt) return '';
+                    const diff = (Date.now() - new Date(dt).getTime()) / 1000;
+                    if (diff < 60) return 'Just now';
+                    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+                    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+                    return Math.floor(diff / 86400) + 'd ago';
+                }
+            };
         }
 
         // Toast notification

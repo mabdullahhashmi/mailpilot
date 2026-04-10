@@ -21,6 +21,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/domains', [DashboardPageController::class, 'domains'])->name('dashboard.domains');
     Route::get('/logs', [DashboardPageController::class, 'logs'])->name('dashboard.logs');
     Route::get('/settings', [DashboardPageController::class, 'settings'])->name('dashboard.settings');
+    Route::get('/templates', [DashboardPageController::class, 'templates'])->name('dashboard.templates');
+    Route::get('/campaigns/{id}', [DashboardPageController::class, 'campaignDetail'])->name('dashboard.campaign-detail');
 });
 
 // Protected API routes for warmup engine
@@ -68,4 +70,18 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     // Event Logs
     Route::get('event-logs', [\App\Http\Controllers\Api\EventLogController::class, 'index']);
     Route::get('event-logs/performance', [\App\Http\Controllers\Api\EventLogController::class, 'performance']);
+
+    // Content Templates
+    Route::apiResource('content-templates', \App\Http\Controllers\Api\ContentTemplateController::class);
+
+    // Alerts
+    Route::get('alerts', [\App\Http\Controllers\Api\AlertController::class, 'index']);
+    Route::get('alerts/unread-count', [\App\Http\Controllers\Api\AlertController::class, 'unreadCount']);
+    Route::post('alerts/mark-all-read', [\App\Http\Controllers\Api\AlertController::class, 'markAllRead']);
+    Route::post('alerts/{id}/read', [\App\Http\Controllers\Api\AlertController::class, 'markRead']);
+    Route::post('alerts/{id}/dismiss', [\App\Http\Controllers\Api\AlertController::class, 'dismiss']);
+
+    // CSV Import
+    Route::post('import/senders', [\App\Http\Controllers\Api\ImportController::class, 'importSenders']);
+    Route::post('import/seeds', [\App\Http\Controllers\Api\ImportController::class, 'importSeeds']);
 });
