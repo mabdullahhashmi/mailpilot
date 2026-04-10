@@ -1,30 +1,18 @@
-# MailPilot - .gitignore
-
-# Uploads (user content)
-assets/uploads/*
-!assets/uploads/.htaccess
-
-# Logs
-logs/*
-!logs/.gitkeep
-
-# Config with credentials (keep the template)
-# config.php  ← Uncomment this after first push if you go public
-
-# OS files
+node_modules
+/vendor
+.env
+.env.backup
+.phpunit.result.cache
+docker-compose.override.yml
+Homestead.json
+Homestead.yaml
+auth.json
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# IDE files
-.vscode/
-
-# Native PHP Tool (legacy)
-Native PHP Tool/
-.htaccess
-.idea/
+npm-debug.log
+yarn-error.log
+storage/logs
+.vscode
+.idea
 *.swp
 *.swo
-
-# PHP dependencies (if using composer later)
-vendor/
