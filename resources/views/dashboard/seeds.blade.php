@@ -117,62 +117,129 @@
 
     <!-- Add/Edit Modal -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
-        <div class="w-full max-w-lg glass rounded-2xl p-6 fade-in" @click.stop>
+        <div class="w-full max-w-xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
             <div class="flex items-center justify-between mb-6">
-                <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Seed' : 'Add Seed'"></h3>
+                <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Seed' : 'Add Seed Mailbox'"></h3>
                 <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <form @submit.prevent="saveSeed()" class="space-y-4">
-                <div>
-                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Email Address *</label>
-                    <input type="email" x-model="form.email_address" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required :disabled="editMode">
-                </div>
+
+                <!-- Email + Provider -->
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Host *</label>
-                        <input type="text" x-model="form.smtp_host" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Email Address *</label>
+                        <input type="email" x-model="form.email_address" @change="syncUsername()" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required :disabled="editMode">
                     </div>
                     <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Port *</label>
-                        <input type="number" x-model="form.smtp_port" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Provider *</label>
+                        <select x-model="form.provider" @change="applyProviderDefaults()" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                            <option value="">Custom / Other</option>
+                            <option value="google">Google (Gmail)</option>
+                            <option value="microsoft">Microsoft (Outlook/365)</option>
+                            <option value="zoho">Zoho Mail</option>
+                            <option value="yahoo">Yahoo Mail</option>
+                        </select>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">SMTP Username *</label>
-                        <input type="text" x-model="form.smtp_username" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium" x-text="form.provider === 'google' ? 'App Password *' : 'SMTP Password *'"></label>
-                        <input type="password" x-model="form.smtp_password" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" :required="!editMode" :placeholder="form.provider === 'google' ? '16-char app password' : ''">
-                    </div>
-                </div>
+
+                <!-- App Password notice for Google -->
                 <div x-show="form.provider === 'google'" class="flex items-start gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
                     <i data-lucide="info" class="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5"></i>
-                    <p class="text-blue-300 text-xs">Gmail requires an <strong>App Password</strong>, not your account password. Go to <span class="font-mono">myaccount.google.com → Security → 2-Step Verification → App passwords</span> to generate one.</p>
+                    <p class="text-blue-300 text-xs">Gmail requires an <strong>App Password</strong>, not your regular password. Enable 2-Step Verification then go to <span class="font-mono text-blue-200">myaccount.google.com → Security → App passwords</span> to generate one.</p>
                 </div>
-                <div class="grid grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Encryption</label>
-                        <select x-model="form.smtp_encryption" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
-                            <option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option>
-                        </select>
+
+                <!-- Password (always shown) -->
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium" x-text="form.provider === 'google' || form.provider === 'microsoft' ? 'App Password *' : 'Password *'"></label>
+                    <input type="password" x-model="form.smtp_password" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" :required="!editMode"
+                           :placeholder="form.provider === 'google' ? '16-character app password' : form.provider === 'microsoft' ? 'Account or app password' : 'SMTP password'">
+                    <p x-show="editMode" class="text-zinc-500 text-[10px] mt-1">Leave blank to keep existing password</p>
+                </div>
+
+                <!-- SMTP Section (auto-filled & read-only for known providers) -->
+                <div class="border border-white/8 rounded-xl p-4 space-y-3">
+                    <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i> SMTP (Outgoing)
+                        <span x-show="form.provider === 'google' || form.provider === 'microsoft'" class="text-[10px] text-emerald-400 font-normal normal-case tracking-normal">Auto-filled</span>
+                    </p>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-zinc-500 mb-1">Host</label>
+                            <input type="text" x-model="form.smtp_host" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                   :class="(form.provider === 'google' || form.provider === 'microsoft') ? 'opacity-60 cursor-not-allowed' : ''"
+                                   :readonly="form.provider === 'google' || form.provider === 'microsoft'" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Port</label>
+                            <input type="number" x-model="form.smtp_port" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                   :class="(form.provider === 'google' || form.provider === 'microsoft') ? 'opacity-60 cursor-not-allowed' : ''"
+                                   :readonly="form.provider === 'google' || form.provider === 'microsoft'" required>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Provider</label>
-                        <select x-model="form.provider" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
-                            <option value="">Auto</option><option value="google">Google</option><option value="microsoft">Microsoft</option><option value="zoho">Zoho</option><option value="other">Other</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Daily Cap</label>
-                        <input type="number" x-model="form.daily_interaction_cap" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="5">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Username</label>
+                            <input type="text" x-model="form.smtp_username" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Encryption</label>
+                            <select x-model="form.smtp_encryption" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                    :disabled="form.provider === 'google' || form.provider === 'microsoft'">
+                                <option value="tls">TLS</option>
+                                <option value="ssl">SSL</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
+
+                <!-- IMAP Section (auto-filled & read-only for known providers) -->
+                <div class="border border-white/8 rounded-xl p-4 space-y-3">
+                    <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="inbox" class="w-3.5 h-3.5"></i> IMAP (Incoming — required for opens & replies)
+                        <span x-show="form.provider === 'google' || form.provider === 'microsoft'" class="text-[10px] text-emerald-400 font-normal normal-case tracking-normal">Auto-filled</span>
+                    </p>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-zinc-500 mb-1">Host</label>
+                            <input type="text" x-model="form.imap_host" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                   :class="(form.provider === 'google' || form.provider === 'microsoft') ? 'opacity-60 cursor-not-allowed' : ''"
+                                   :readonly="form.provider === 'google' || form.provider === 'microsoft'">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Port</label>
+                            <input type="number" x-model="form.imap_port" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                   :class="(form.provider === 'google' || form.provider === 'microsoft') ? 'opacity-60 cursor-not-allowed' : ''"
+                                   :readonly="form.provider === 'google' || form.provider === 'microsoft'">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Username</label>
+                            <input type="text" x-model="form.imap_username" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-500 mb-1">Encryption</label>
+                            <select x-model="form.imap_encryption" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
+                                    :disabled="form.provider === 'google' || form.provider === 'microsoft'">
+                                <option value="ssl">SSL</option>
+                                <option value="tls">TLS</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Cap -->
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Daily Interaction Cap</label>
+                    <input type="number" x-model="form.daily_interaction_cap" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="20" min="1">
+                </div>
+
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="showModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Cancel</button>
                     <button type="submit" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="saving">
-                        <span x-show="!saving" x-text="editMode ? 'Update' : 'Add Seed'"></span>
+                        <span x-show="!saving" x-text="editMode ? 'Update Seed' : 'Add Seed'"></span>
                         <span x-show="saving">Saving...</span>
                     </button>
                 </div>
@@ -184,13 +251,45 @@
 
 @push('scripts')
 <script>
+const PROVIDER_DEFAULTS = {
+    google:    { smtp_host: 'smtp.gmail.com',        smtp_port: 587, smtp_encryption: 'tls', imap_host: 'imap.gmail.com',           imap_port: 993, imap_encryption: 'ssl' },
+    microsoft: { smtp_host: 'smtp.office365.com',    smtp_port: 587, smtp_encryption: 'tls', imap_host: 'outlook.office365.com',    imap_port: 993, imap_encryption: 'ssl' },
+    zoho:      { smtp_host: 'smtp.zoho.com',         smtp_port: 587, smtp_encryption: 'tls', imap_host: 'imap.zoho.com',            imap_port: 993, imap_encryption: 'ssl' },
+    yahoo:     { smtp_host: 'smtp.mail.yahoo.com',   smtp_port: 587, smtp_encryption: 'tls', imap_host: 'imap.mail.yahoo.com',      imap_port: 993, imap_encryption: 'ssl' },
+};
+
 function seedsPage() {
     return {
         seeds: [], showModal: false, showImport: false, editMode: false, editId: null, saving: false, importFile: null, importing: false, importResult: null, form: {},
+
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
         async load() { try { this.seeds = await apiCall('/api/warmup/seed-mailboxes'); } catch(e) { this.seeds = []; } this.$nextTick(() => lucide.createIcons()); },
-        resetForm() { this.form = { email_address: '', smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_encryption: 'tls', provider: '', daily_interaction_cap: 5 }; },
-        editSeed(s) { this.editMode = true; this.editId = s.id; this.form = { ...s, smtp_password: '' }; this.showModal = true; },
+
+        resetForm() {
+            this.form = { email_address: '', provider: '', smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_encryption: 'tls', imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_encryption: 'ssl', daily_interaction_cap: 20 };
+        },
+
+        applyProviderDefaults() {
+            const d = PROVIDER_DEFAULTS[this.form.provider];
+            if (d) {
+                this.form.smtp_host = d.smtp_host;
+                this.form.smtp_port = d.smtp_port;
+                this.form.smtp_encryption = d.smtp_encryption;
+                this.form.imap_host = d.imap_host;
+                this.form.imap_port = d.imap_port;
+                this.form.imap_encryption = d.imap_encryption;
+            }
+            this.syncUsername();
+        },
+
+        syncUsername() {
+            if (this.form.email_address && !this.form.smtp_username) {
+                this.form.smtp_username = this.form.email_address;
+                this.form.imap_username = this.form.email_address;
+            }
+        },
+
+        editSeed(s) { this.editMode = true; this.editId = s.id; this.form = { ...s, smtp_password: '', imap_password: '' }; this.showModal = true; },
         async saveSeed() {
             this.saving = true;
             try {
