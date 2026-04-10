@@ -18,6 +18,10 @@ desktop.ini
 
 # IDE files
 .vscode/
+
+# Native PHP Tool (legacy)
+Native PHP Tool/
+.htaccess
 .idea/
 *.swp
 *.swo
