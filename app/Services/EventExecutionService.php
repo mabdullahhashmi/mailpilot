@@ -125,9 +125,9 @@ class EventExecutionService
         // Get last message to reply to
         $lastMessage = $thread->messages()->latest('message_step_number')->first();
 
-        // Generate reply content
+        // Generate reply content (intent-aware)
         $campaign = $thread->warmupCampaign;
-        $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread);
+        $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread, $lastMessage?->body);
         $body = $this->content->generateReplyBody($template, $seed, $sender, $lastMessage);
 
         // Send reply via seed SMTP
@@ -171,7 +171,7 @@ class EventExecutionService
         $lastMessage = $thread->messages()->latest('message_step_number')->first();
 
         $campaign = $thread->warmupCampaign;
-        $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread);
+        $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread, $lastMessage?->body);
         $body = $this->content->generateReplyBody($template, $sender, $seed, $lastMessage);
 
         $messageId = $this->sendEmail(

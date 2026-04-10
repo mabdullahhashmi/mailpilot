@@ -21,5 +21,6 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call(WarmupSeeder::class);
+        $this->call(NicheTemplateSeeder::class);
     }
 }

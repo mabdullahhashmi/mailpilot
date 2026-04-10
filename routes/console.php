@@ -9,6 +9,12 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Artisan::command('warmup:seed-templates', function () {
+    $this->info('Seeding niche warmup templates...');
+    (new \Database\Seeders\NicheTemplateSeeder())->run();
+    $this->info('Done!');
+})->purpose('Seed 200 niche spintax warmup templates');
+
 /*
 |--------------------------------------------------------------------------
 | Warmup Engine Scheduled Commands
