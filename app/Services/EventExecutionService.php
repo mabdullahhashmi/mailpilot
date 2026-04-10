@@ -204,24 +204,139 @@ class EventExecutionService
 
     private function executeSeedOpen(WarmupEvent $event): array
     {
-        // Simulate or log that seed opened the email (IMAP-based check)
-        return ['message' => 'Seed open recorded', 'schedule_next' => false];
+        $thread = Thread::findOrFail($event->thread_id);
+        $seed = $thread->seedMailbox;
+
+        $imap = $this->connectImap($seed);
+        if (!$imap) {
+            return ['message' => 'Seed open recorded (IMAP unavailable)', 'schedule_next' => false];
+        }
+
+        try {
+            // Search for the message by subject in INBOX
+            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+
+            if ($messageUid) {
+                // Mark message as SEEN (this is what "open" means at IMAP level)
+                imap_setflag_full($imap, (string)$messageUid, '\\Seen', ST_UID);
+
+                // Also fetch headers to trigger provider tracking
+                imap_fetchheader($imap, $messageUid, FT_UID);
+                imap_fetchbody($imap, $messageUid, '1', FT_UID);
+            }
+
+            return ['message' => $messageUid
+                ? "Seed opened message (UID: {$messageUid})"
+                : 'Seed open recorded (message not found in inbox)', 'schedule_next' => false];
+        } finally {
+            imap_close($imap);
+        }
     }
 
     private function executeSeedMarkImportant(WarmupEvent $event): array
     {
-        // IMAP flag operation on seed inbox
-        return ['message' => 'Message marked important', 'schedule_next' => false];
+        $thread = Thread::findOrFail($event->thread_id);
+        $seed = $thread->seedMailbox;
+
+        $imap = $this->connectImap($seed);
+        if (!$imap) {
+            return ['message' => 'Mark important skipped (IMAP unavailable)', 'schedule_next' => false];
+        }
+
+        try {
+            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+
+            if ($messageUid) {
+                // Set \\Flagged (important/starred in most providers)
+                imap_setflag_full($imap, (string)$messageUid, '\\Flagged', ST_UID);
+
+                // Gmail-specific: try $Important label
+                $mailboxes = imap_list($imap, $this->imapPath($seed), '*');
+                if ($mailboxes && in_array($this->imapPath($seed) . '[Gmail]/Important', $mailboxes)) {
+                    imap_mail_copy($imap, (string)$messageUid, '[Gmail]/Important', CP_UID);
+                }
+            }
+
+            return ['message' => $messageUid
+                ? "Message marked important (UID: {$messageUid})"
+                : 'Mark important skipped (message not found)', 'schedule_next' => false];
+        } finally {
+            imap_close($imap);
+        }
     }
 
     private function executeSeedStarMessage(WarmupEvent $event): array
     {
-        return ['message' => 'Message starred', 'schedule_next' => false];
+        $thread = Thread::findOrFail($event->thread_id);
+        $seed = $thread->seedMailbox;
+
+        $imap = $this->connectImap($seed);
+        if (!$imap) {
+            return ['message' => 'Star message skipped (IMAP unavailable)', 'schedule_next' => false];
+        }
+
+        try {
+            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+
+            if ($messageUid) {
+                imap_setflag_full($imap, (string)$messageUid, '\\Flagged', ST_UID);
+            }
+
+            return ['message' => $messageUid
+                ? "Message starred (UID: {$messageUid})"
+                : 'Star skipped (message not found)', 'schedule_next' => false];
+        } finally {
+            imap_close($imap);
+        }
     }
 
     private function executeSeedRemoveFromSpam(WarmupEvent $event): array
     {
-        return ['message' => 'Message removed from spam', 'schedule_next' => false];
+        $thread = Thread::findOrFail($event->thread_id);
+        $seed = $thread->seedMailbox;
+
+        $imap = $this->connectImap($seed);
+        if (!$imap) {
+            return ['message' => 'Spam rescue skipped (IMAP unavailable)', 'schedule_next' => false];
+        }
+
+        try {
+            // Search in spam/junk folders
+            $spamFolders = ['[Gmail]/Spam', 'Junk', 'INBOX.Junk', 'Spam', 'INBOX.Spam', 'Junk Email', 'Junk E-mail'];
+            $messageUid = null;
+            $spamFolder = null;
+
+            foreach ($spamFolders as $folder) {
+                $fullPath = $this->imapPath($seed) . $folder;
+                if (@imap_reopen($imap, $fullPath)) {
+                    $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+                    if ($messageUid) {
+                        $spamFolder = $folder;
+                        break;
+                    }
+                }
+            }
+
+            if ($messageUid && $spamFolder) {
+                // Move from spam to INBOX
+                imap_mail_move($imap, (string)$messageUid, 'INBOX', CP_UID);
+                imap_expunge($imap);
+
+                // Reopen INBOX and mark as not-spam (flag as seen + not-junk)
+                imap_reopen($imap, $this->imapPath($seed) . 'INBOX');
+                $movedUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+                if ($movedUid) {
+                    imap_setflag_full($imap, (string)$movedUid, '\\Seen', ST_UID);
+                    imap_clearflag_full($imap, (string)$movedUid, '$Junk', ST_UID);
+                }
+
+                return ['message' => "Rescued from {$spamFolder} to INBOX (UID: {$messageUid})", 'schedule_next' => false];
+            }
+
+            return ['message' => 'Spam rescue skipped (message not found in spam folders)', 'schedule_next' => false];
+        } finally {
+            imap_close($imap);
+        }
     }
 
     private function executeThreadClose(WarmupEvent $event): array
@@ -346,5 +461,76 @@ class EventExecutionService
         $mailer->send($email);
 
         return $messageId;
+    }
+
+    /**
+     * Connect to a mailbox's IMAP server.
+     */
+    private function connectImap($mailbox): mixed
+    {
+        $host = $mailbox->imap_host ?? $mailbox->smtp_host;
+        $port = $mailbox->imap_port ?? 993;
+        $encryption = $mailbox->imap_encryption ?? 'ssl';
+        $username = $mailbox->imap_username ?? $mailbox->smtp_username;
+
+        try {
+            $password = Crypt::decryptString($mailbox->imap_password ?? $mailbox->smtp_password);
+        } catch (\Exception $e) {
+            Log::warning("[WarmupEngine] IMAP password decrypt failed for {$mailbox->email_address}");
+            return false;
+        }
+
+        $flags = $encryption === 'ssl' ? '/imap/ssl/validate-cert' : '/imap/notls';
+        $path = "{{$host}:{$port}{$flags}}INBOX";
+
+        try {
+            $imap = @imap_open($path, $username, $password, 0, 1);
+            if (!$imap) {
+                // Try without certificate validation
+                $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
+                $path = "{{$host}:{$port}{$flags}}INBOX";
+                $imap = @imap_open($path, $username, $password, 0, 1);
+            }
+            return $imap ?: false;
+        } catch (\Exception $e) {
+            Log::warning("[WarmupEngine] IMAP connection failed for {$mailbox->email_address}: {$e->getMessage()}");
+            return false;
+        }
+    }
+
+    /**
+     * Build IMAP server path for a mailbox.
+     */
+    private function imapPath($mailbox): string
+    {
+        $host = $mailbox->imap_host ?? $mailbox->smtp_host;
+        $port = $mailbox->imap_port ?? 993;
+        $encryption = $mailbox->imap_encryption ?? 'ssl';
+        $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
+        return "{{$host}:{$port}{$flags}}";
+    }
+
+    /**
+     * Find a message UID in the current IMAP mailbox by subject and sender.
+     */
+    private function findMessageInMailbox($imap, string $subject, string $fromEmail): ?int
+    {
+        // Clean subject for IMAP search
+        $cleanSubject = str_replace(['Re: ', 'RE: ', 'Fwd: ', 'FWD: '], '', $subject);
+        $cleanSubject = substr($cleanSubject, 0, 60); // IMAP search limit
+
+        $results = @imap_search($imap, 'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '" FROM "' . $fromEmail . '"', SE_UID);
+
+        if (!$results || empty($results)) {
+            // Fallback: search by subject only
+            $results = @imap_search($imap, 'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '"', SE_UID);
+        }
+
+        if ($results && !empty($results)) {
+            // Return the most recent match
+            return (int) end($results);
+        }
+
+        return null;
     }
 }

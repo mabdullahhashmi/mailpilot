@@ -46,13 +46,14 @@ class DomainController extends Controller
     public function checkDns(int $id): JsonResponse
     {
         $domain = \App\Models\Domain::findOrFail($id);
-        $results = $this->domainService->runDnsCheck($domain);
+        $results = $this->domainService->checkDns($domain);
         return response()->json($results);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $this->domainService->delete($id);
+        $domain = \App\Models\Domain::findOrFail($id);
+        $domain->delete();
         return response()->json(['message' => 'Deleted']);
     }
 }

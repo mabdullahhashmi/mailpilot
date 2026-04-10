@@ -60,25 +60,29 @@ class SeedMailboxController extends Controller
             'daily_interaction_cap' => 'nullable|integer|min:1',
         ]);
 
-        $seed = $this->service->update($id, $validated);
-        return response()->json($seed);
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $updated = $this->service->update($seed, $validated);
+        return response()->json($updated);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $this->service->delete($id);
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $seed->delete();
         return response()->json(['message' => 'Deleted']);
     }
 
     public function pause(Request $request, int $id): JsonResponse
     {
-        $this->service->pause($id, $request->input('reason', 'Manual pause'));
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $this->service->pause($seed, $request->input('reason', 'Manual pause'));
         return response()->json(['message' => 'Paused']);
     }
 
     public function resume(int $id): JsonResponse
     {
-        $this->service->resume($id);
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $this->service->resume($seed);
         return response()->json(['message' => 'Resumed']);
     }
 }

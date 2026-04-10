@@ -10,8 +10,8 @@ class WarmupProfileController extends Controller
 {
     public function index(): JsonResponse
     {
-        $profiles = \App\Models\WarmupProfile::withCount('warmupCampaigns')
-            ->orderBy('name')
+        $profiles = \App\Models\WarmupProfile::withCount('campaigns')
+            ->orderBy('profile_name')
             ->get();
 
         return response()->json($profiles);
@@ -20,10 +20,10 @@ class WarmupProfileController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'profile_name' => 'required|string|max:255|unique:warmup_profiles,profile_name',
             'description' => 'nullable|string',
-            'planned_duration_days' => 'required|integer|min:7|max:60',
-            'daily_rules' => 'required|array',
+            'profile_type' => 'sometimes|in:default,aggressive,conservative,maintenance,custom',
+            'day_rules' => 'nullable|array',
             'thread_length_distribution' => 'nullable|array',
             'reply_delay_distribution' => 'nullable|array',
             'provider_distribution' => 'nullable|array',
@@ -35,7 +35,7 @@ class WarmupProfileController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $profile = \App\Models\WarmupProfile::withCount('warmupCampaigns')
+        $profile = \App\Models\WarmupProfile::withCount('campaigns')
             ->findOrFail($id);
 
         return response()->json($profile);
@@ -46,10 +46,10 @@ class WarmupProfileController extends Controller
         $profile = \App\Models\WarmupProfile::findOrFail($id);
 
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
+            'profile_name' => 'sometimes|string|max:255|unique:warmup_profiles,profile_name,' . $id,
             'description' => 'nullable|string',
-            'planned_duration_days' => 'sometimes|integer|min:7|max:60',
-            'daily_rules' => 'sometimes|array',
+            'profile_type' => 'sometimes|in:default,aggressive,conservative,maintenance,custom',
+            'day_rules' => 'sometimes|array',
             'thread_length_distribution' => 'nullable|array',
             'reply_delay_distribution' => 'nullable|array',
             'provider_distribution' => 'nullable|array',
@@ -63,7 +63,7 @@ class WarmupProfileController extends Controller
     {
         $profile = \App\Models\WarmupProfile::findOrFail($id);
 
-        if ($profile->warmupCampaigns()->where('status', 'active')->exists()) {
+        if ($profile->campaigns()->where('status', 'active')->exists()) {
             return response()->json(['error' => 'Cannot delete profile with active campaigns'], 422);
         }
 

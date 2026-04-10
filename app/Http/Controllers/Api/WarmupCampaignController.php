@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SenderMailbox;
 use App\Services\WarmupCampaignService;
 use App\Services\ReportingService;
 use App\Services\ReadinessScoringService;
@@ -37,7 +38,7 @@ class WarmupCampaignController extends Controller
         ]);
 
         $campaign = $this->campaignService->start(
-            $validated['sender_mailbox_id'],
+            SenderMailbox::findOrFail($validated['sender_mailbox_id']),
             $validated['warmup_profile_id']
         );
 

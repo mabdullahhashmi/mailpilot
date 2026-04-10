@@ -73,37 +73,43 @@ class SenderMailboxController extends Controller
             'timezone' => 'nullable|string',
         ]);
 
-        $mailbox = $this->service->update($id, $validated);
-        return response()->json($mailbox);
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $updated = $this->service->update($mailbox, $validated);
+        return response()->json($updated);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $this->service->delete($id);
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox->delete();
         return response()->json(['message' => 'Deleted']);
     }
 
     public function testSmtp(int $id): JsonResponse
     {
-        $result = $this->service->testSmtp($id);
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $result = $this->service->testSmtp($mailbox);
         return response()->json($result);
     }
 
     public function testImap(int $id): JsonResponse
     {
-        $result = $this->service->testImap($id);
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $result = $this->service->testImap($mailbox);
         return response()->json($result);
     }
 
     public function pause(Request $request, int $id): JsonResponse
     {
-        $this->service->pause($id, $request->input('reason', 'Manual pause'));
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $this->service->pause($mailbox, $request->input('reason', 'Manual pause'));
         return response()->json(['message' => 'Paused']);
     }
 
     public function resume(int $id): JsonResponse
     {
-        $this->service->resume($id);
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $this->service->resume($mailbox);
         return response()->json(['message' => 'Resumed']);
     }
 }
