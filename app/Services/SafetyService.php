@@ -9,6 +9,7 @@ use App\Models\WarmupEvent;
 use App\Models\PauseRule;
 use App\Models\WarmupCampaign;
 use App\Models\SystemAlert;
+use App\Models\MailboxHealthLog;
 use Illuminate\Support\Facades\Log;
 
 class SafetyService
@@ -158,5 +159,127 @@ class SafetyService
         $growthRate = (($today - $yesterday) / $yesterday) * 100;
 
         return $growthRate <= $maxGrowthPercent;
+    }
+
+    /**
+     * Check bounce and spam rate thresholds and auto-pause sender if exceeded.
+     * Called after each bounce or spam report.
+     */
+    public function checkDeliverabilityThresholds(SenderMailbox $sender): ?string
+    {
+        if (!$sender->auto_pause_on_threshold) {
+            return null;
+        }
+
+        $log = MailboxHealthLog::where('sender_mailbox_id', $sender->id)
+            ->where('log_date', today())
+            ->first();
+
+        if (!$log || $log->sends_today < 3) {
+            return null; // Not enough data to evaluate
+        }
+
+        $bounceRate = ($log->bounces_today / $log->sends_today) * 100;
+        $spamRate = ($log->spam_reports_today / $log->sends_today) * 100;
+        $reason = null;
+
+        if ($bounceRate >= $sender->bounce_rate_threshold) {
+            $reason = "Bounce rate {$bounceRate}% exceeds threshold {$sender->bounce_rate_threshold}%";
+        } elseif ($spamRate >= $sender->spam_rate_threshold) {
+            $reason = "Spam rate {$spamRate}% exceeds threshold {$sender->spam_rate_threshold}%";
+        }
+
+        if ($reason) {
+            $this->autoPauseSender($sender, $reason);
+            return $reason;
+        }
+
+        return null;
+    }
+
+    /**
+     * Auto-pause a sender with tracking and alert.
+     */
+    public function autoPauseSender(SenderMailbox $sender, string $reason): void
+    {
+        $sender->update([
+            'status' => 'paused',
+            'is_paused' => true,
+            'auto_paused_at' => now(),
+            'auto_pause_reason' => $reason,
+            'ramp_down_active' => true,
+            'consecutive_clean_days' => 0,
+        ]);
+
+        PauseRule::create([
+            'pausable_type' => SenderMailbox::class,
+            'pausable_id' => $sender->id,
+            'reason' => 'threshold_breach',
+            'details' => $reason,
+            'paused_at' => now(),
+            'auto_resume_at' => now()->addHours(48),
+            'status' => 'active',
+        ]);
+
+        SystemAlert::create([
+            'title' => "Sender auto-paused: {$sender->email_address}",
+            'message' => $reason,
+            'severity' => 'critical',
+            'context_type' => 'sender_mailbox',
+            'context_id' => $sender->id,
+        ]);
+
+        Log::warning("[Safety] Auto-paused sender #{$sender->id} ({$sender->email_address}): {$reason}");
+    }
+
+    /**
+     * Apply ramp-down: reduce daily capacity to a percentage after being un-paused.
+     * Returns the effective daily cap after ramp-down.
+     */
+    public function getRampDownCap(SenderMailbox $sender): int
+    {
+        if (!$sender->ramp_down_active) {
+            return $sender->daily_send_cap;
+        }
+
+        // Gradual recovery: start at ramp_down_percentage%, add 10% per clean day
+        $recoveryPercent = min(100, $sender->ramp_down_percentage + ($sender->consecutive_clean_days * 10));
+        $effectiveCap = max(1, (int)ceil($sender->daily_send_cap * $recoveryPercent / 100));
+
+        // If fully recovered, disable ramp-down
+        if ($recoveryPercent >= 100) {
+            $sender->update([
+                'ramp_down_active' => false,
+                'ramp_down_percentage' => 50,
+            ]);
+        }
+
+        return $effectiveCap;
+    }
+
+    /**
+     * End-of-day: check if sender had a clean day (no bounces/spam) and increment counter.
+     * Called by the health cron.
+     */
+    public function evaluateDailyRecovery(SenderMailbox $sender): void
+    {
+        if (!$sender->ramp_down_active) {
+            return;
+        }
+
+        $log = MailboxHealthLog::where('sender_mailbox_id', $sender->id)
+            ->where('log_date', today())
+            ->first();
+
+        if (!$log) return;
+
+        $isClean = $log->bounces_today === 0 && $log->spam_reports_today === 0 && $log->sends_today > 0;
+
+        if ($isClean) {
+            $sender->increment('consecutive_clean_days');
+            Log::info("[Safety] Sender #{$sender->id} clean day #{$sender->consecutive_clean_days}");
+        } else {
+            $sender->update(['consecutive_clean_days' => 0]);
+        }
     }
 }

@@ -75,4 +75,9 @@ class DashboardPageController extends Controller
     {
         return view('dashboard.progress-report');
     }
+
+    public function diagnostics()
+    {
+        return view('dashboard.diagnostics');
+    }
 }

@@ -111,4 +111,63 @@ class HealthService
             ]
         );
     }
+
+    /**
+     * Record a spam report for sender.
+     */
+    public function recordSpamReport(SenderMailbox $sender): void
+    {
+        $log = $this->getOrCreateDailyLog($sender);
+        $log->increment('spam_reports_today');
+    }
+
+    /**
+     * Record an open event.
+     */
+    public function recordOpen(SenderMailbox $sender): void
+    {
+        $log = $this->getOrCreateDailyLog($sender);
+        $log->increment('opens_today');
+    }
+
+    /**
+     * Get sender's bounce rate for today.
+     */
+    public function getTodayBounceRate(SenderMailbox $sender): float
+    {
+        $log = $this->getOrCreateDailyLog($sender);
+        if ($log->sends_today === 0) return 0;
+        return ($log->bounces_today / $log->sends_today) * 100;
+    }
+
+    /**
+     * Get sender's spam rate for today.
+     */
+    public function getTodaySpamRate(SenderMailbox $sender): float
+    {
+        $log = $this->getOrCreateDailyLog($sender);
+        if ($log->sends_today === 0) return 0;
+        return ($log->spam_reports_today / $log->sends_today) * 100;
+    }
+
+    /**
+     * Get historical health trend for a sender (last N days).
+     */
+    public function getHealthTrend(SenderMailbox $sender, int $days = 14): array
+    {
+        return MailboxHealthLog::where('sender_mailbox_id', $sender->id)
+            ->where('log_date', '>=', today()->subDays($days))
+            ->orderBy('log_date')
+            ->get()
+            ->map(fn ($log) => [
+                'date' => $log->log_date->format('Y-m-d'),
+                'health_score' => $log->health_score,
+                'sends' => $log->sends_today,
+                'replies' => $log->replies_today,
+                'bounces' => $log->bounces_today,
+                'opens' => $log->opens_today,
+                'spam' => $log->spam_reports_today,
+            ])
+            ->toArray();
+    }
 }

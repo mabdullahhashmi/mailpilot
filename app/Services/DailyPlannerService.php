@@ -16,6 +16,7 @@ class DailyPlannerService
         private SafetyService $safety,
         private RandomizationService $randomizer,
         private WarmupCampaignService $campaignService,
+        private SlotSchedulerService $slotScheduler,
     ) {}
 
     /**
@@ -35,7 +36,9 @@ class DailyPlannerService
         $maxReplies = $dayRules['max_replies'];
         $maxTotal = $dayRules['max_total'];
 
-        // Apply safety caps
+        // Apply safety caps (with ramp-down awareness)
+        $effectiveSendCap = $this->safety->getRampDownCap($sender);
+        $maxNewThreads = min($maxNewThreads, $effectiveSendCap);
         $maxNewThreads = $this->safety->applySenderCap($sender, $maxNewThreads, 'send');
         $maxReplies = $this->safety->applySenderCap($sender, $maxReplies, 'reply');
         $maxTotal = min($maxTotal, $maxNewThreads + $maxReplies);
@@ -162,7 +165,7 @@ class DailyPlannerService
                 $campaign->senderMailbox->timezone
             );
 
-            \App\Models\WarmupEvent::create([
+            $event = \App\Models\WarmupEvent::create([
                 'event_type' => 'sender_send_initial',
                 'actor_type' => 'sender',
                 'actor_mailbox_id' => $campaign->sender_mailbox_id,
@@ -175,6 +178,12 @@ class DailyPlannerService
                 'priority' => 5,
                 'payload' => ['planner_run_id' => $plannerRun->id],
             ]);
+
+            // Create visible send slot
+            $this->slotScheduler->createSlot(
+                $campaign, $campaign->sender_mailbox_id, $seed->id,
+                $thread->id, 'initial_send', $scheduledAt, $event->id
+            );
         }
     }
 
@@ -215,6 +224,12 @@ class DailyPlannerService
                 'priority' => 4,
                 'payload' => ['planner_run_id' => $plannerRun->id],
             ]);
+
+            // Create visible reply slot
+            $this->slotScheduler->createSlot(
+                $campaign, $thread->sender_mailbox_id, $thread->seed_mailbox_id,
+                $thread->id, 'reply', $scheduledAt
+            );
         }
     }
 }

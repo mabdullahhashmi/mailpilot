@@ -19,6 +19,9 @@ class SenderMailbox extends Model
         'health_score', 'readiness_score', 'is_paused', 'maintenance_mode',
         'last_smtp_test_at', 'last_imap_test_at',
         'last_smtp_test_result', 'last_imap_test_result',
+        'bounce_rate_threshold', 'spam_rate_threshold', 'auto_pause_on_threshold',
+        'ramp_down_active', 'consecutive_clean_days', 'ramp_down_percentage',
+        'auto_paused_at', 'auto_pause_reason',
     ];
 
     protected $casts = [
@@ -26,8 +29,11 @@ class SenderMailbox extends Model
         'is_warmup_enabled' => 'boolean',
         'is_paused' => 'boolean',
         'maintenance_mode' => 'boolean',
+        'auto_pause_on_threshold' => 'boolean',
+        'ramp_down_active' => 'boolean',
         'last_smtp_test_at' => 'datetime',
         'last_imap_test_at' => 'datetime',
+        'auto_paused_at' => 'datetime',
     ];
 
     protected $hidden = [

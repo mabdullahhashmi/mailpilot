@@ -6,6 +6,7 @@ use App\Models\WarmupEvent;
 use App\Models\WarmupEventLog;
 use App\Models\Thread;
 use App\Models\ThreadMessage;
+use App\Models\SendSlot;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
@@ -17,6 +18,9 @@ class EventExecutionService
         private SafetyService $safety,
         private HealthService $health,
         private RandomizationService $randomizer,
+        private ContentGuardService $contentGuard,
+        private SeedHealthService $seedHealth,
+        private SlotSchedulerService $slotScheduler,
     ) {}
 
     /**
@@ -64,6 +68,12 @@ class EventExecutionService
             'execution_time_ms' => $executionTime,
         ]);
 
+        // Update linked send slot
+        $slot = SendSlot::where('warmup_event_id', $event->id)->first();
+        if ($slot) {
+            $this->slotScheduler->markSlotCompleted($slot);
+        }
+
         // Schedule next event in thread if applicable
         if ($event->thread_id && isset($result['schedule_next']) && $result['schedule_next']) {
             $this->scheduleNextThreadEvent($event);
@@ -87,6 +97,9 @@ class EventExecutionService
 
         // Send email via SMTP
         $messageId = $this->sendEmail($sender, $seed, $subject, $body);
+
+        // Record content fingerprint for anti-pattern protection
+        $this->contentGuard->recordUsage($sender, $seed->email_address, $body, $template);
 
         // Create thread message record
         $message = ThreadMessage::create([
@@ -118,6 +131,18 @@ class EventExecutionService
         $thread = Thread::findOrFail($event->thread_id);
         $seed = $thread->seedMailbox;
         $sender = $thread->senderMailbox;
+
+        // Sequence enforcement: seed must have "opened" (seed_open_email) before replying
+        $pendingOpen = WarmupEvent::where('thread_id', $thread->id)
+            ->where('event_type', 'seed_open_email')
+            ->where('status', 'pending')
+            ->exists();
+
+        if ($pendingOpen) {
+            // Reschedule this reply to run after the open event
+            $event->update(['scheduled_at' => now()->addMinutes(rand(5, 15))]);
+            return ['message' => "Reply deferred - open event pending for thread #{$thread->id}", 'schedule_next' => false];
+        }
 
         // Safety check
         $this->safety->assertCanInteract($seed, $thread->domain);
@@ -156,6 +181,8 @@ class EventExecutionService
         $this->threadService->advanceThread($thread, $message);
         $this->health->recordReply($sender);
         $this->health->recordSeedInteraction($seed, $thread->domain);
+        $this->seedHealth->recordSuccess($seed, 'reply');
+        $this->contentGuard->recordUsage($seed, $sender->email_address, $body);
 
         return ['message' => "Seed replied in thread #{$thread->id}", 'schedule_next' => true];
     }
@@ -198,6 +225,7 @@ class EventExecutionService
 
         $this->threadService->advanceThread($thread, $message);
         $this->health->recordSend($sender);
+        $this->contentGuard->recordUsage($sender, $seed->email_address, $body, $template);
 
         return ['message' => "Sender replied in thread #{$thread->id}", 'schedule_next' => true];
     }
@@ -224,6 +252,10 @@ class EventExecutionService
                 imap_fetchheader($imap, $messageUid, FT_UID);
                 imap_fetchbody($imap, $messageUid, '1', FT_UID);
             }
+
+            // Track open for health + sender health
+            $this->seedHealth->recordSuccess($seed, 'open');
+            $this->health->recordOpen($thread->senderMailbox);
 
             return ['message' => $messageUid
                 ? "Seed opened message (UID: {$messageUid})"

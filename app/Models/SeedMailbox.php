@@ -15,11 +15,16 @@ class SeedMailbox extends Model
         'daily_total_interaction_cap', 'per_domain_interaction_cap', 'per_sender_interaction_cap',
         'concurrent_thread_cap', 'cooldown_minutes_between_threads',
         'trust_tier', 'health_score', 'last_used_at', 'is_paused',
+        'seed_health_score', 'reply_quality_score', 'total_replies_sent',
+        'total_opens', 'failed_interactions',
+        'last_health_check_at', 'auto_disabled_at', 'auto_disable_reason',
     ];
 
     protected $casts = [
         'is_paused' => 'boolean',
         'last_used_at' => 'datetime',
+        'last_health_check_at' => 'datetime',
+        'auto_disabled_at' => 'datetime',
     ];
 
     protected $hidden = [

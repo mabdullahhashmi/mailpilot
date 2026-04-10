@@ -27,6 +27,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dns-health', [DashboardPageController::class, 'dnsHealth'])->name('dashboard.dns-health');
     Route::get('/system-health', [DashboardPageController::class, 'systemHealth'])->name('dashboard.system-health');
     Route::get('/progress-report', [DashboardPageController::class, 'progressReport'])->name('dashboard.progress-report');
+    Route::get('/diagnostics', [DashboardPageController::class, 'diagnostics'])->name('dashboard.diagnostics');
 });
 
 // Protected API routes for warmup engine
@@ -108,4 +109,16 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     // Data Export (F5)
     Route::get('export/event-logs', [\App\Http\Controllers\Api\ExportController::class, 'eventLogs']);
     Route::get('export/sender-health', [\App\Http\Controllers\Api\ExportController::class, 'senderHealth']);
+
+    // Diagnostics (Phase H)
+    Route::get('diagnostics/live', [\App\Http\Controllers\Api\DiagnosticController::class, 'liveDiagnostic']);
+    Route::get('diagnostics/cron-health', [\App\Http\Controllers\Api\DiagnosticController::class, 'cronHealth']);
+    Route::post('diagnostics/fix-stuck', [\App\Http\Controllers\Api\DiagnosticController::class, 'fixStuckEvents']);
+    Route::get('diagnostics/slots/{campaignId}', [\App\Http\Controllers\Api\DiagnosticController::class, 'todaySlots']);
+    Route::get('diagnostics/slots/{campaignId}/stats', [\App\Http\Controllers\Api\DiagnosticController::class, 'slotStats']);
+    Route::get('diagnostics/seed-health', [\App\Http\Controllers\Api\DiagnosticController::class, 'seedHealthReport']);
+    Route::post('diagnostics/seed-health/check', [\App\Http\Controllers\Api\DiagnosticController::class, 'runSeedHealthCheck']);
+    Route::post('diagnostics/seed-health/{id}/re-enable', [\App\Http\Controllers\Api\DiagnosticController::class, 'reEnableSeed']);
+    Route::get('diagnostics/content-warnings/{senderId}', [\App\Http\Controllers\Api\DiagnosticController::class, 'contentWarnings']);
+    Route::get('diagnostics/history', [\App\Http\Controllers\Api\DiagnosticController::class, 'snapshotHistory']);
 });
