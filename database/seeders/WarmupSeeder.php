@@ -19,10 +19,10 @@ class WarmupSeeder extends Seeder
     private function seedProfiles(): void
     {
         // Default profile: 14-day moderate warmup
-        WarmupProfile::updateOrCreate(['name' => 'Default (14 Day)'], [
+        WarmupProfile::updateOrCreate(['profile_name' => 'Default (14 Day)'], [
             'description' => 'Standard 14-day warmup with gradual ramp-up',
-            'planned_duration_days' => 14,
-            'daily_rules' => [
+            'profile_type' => 'default',
+            'day_rules' => [
                 '1'  => ['max_new_threads' => 2, 'max_replies' => 0, 'max_total' => 2],
                 '2'  => ['max_new_threads' => 3, 'max_replies' => 1, 'max_total' => 4],
                 '3'  => ['max_new_threads' => 4, 'max_replies' => 2, 'max_total' => 6],
@@ -38,17 +38,21 @@ class WarmupSeeder extends Seeder
                 '13' => ['max_new_threads' => 20, 'max_replies' => 18, 'max_total' => 38],
                 '14' => ['max_new_threads' => 22, 'max_replies' => 20, 'max_total' => 42],
             ],
+            'default_max_new_threads_per_day' => 2,
+            'default_max_reply_actions_per_day' => 3,
+            'default_max_total_actions_per_day' => 5,
             'thread_length_distribution' => ['2' => 40, '3' => 30, '4' => 20, '5' => 10],
             'reply_delay_distribution' => ['min_minutes' => 15, 'max_minutes' => 180, 'peak_minutes' => 60],
             'provider_distribution' => ['google' => 50, 'microsoft' => 30, 'other' => 20],
-            'is_default' => true,
+            'working_hours_start' => '08:00:00',
+            'working_hours_end' => '18:00:00',
         ]);
 
         // Aggressive profile: 10-day fast warmup
-        WarmupProfile::updateOrCreate(['name' => 'Aggressive (10 Day)'], [
+        WarmupProfile::updateOrCreate(['profile_name' => 'Aggressive (10 Day)'], [
             'description' => 'Faster 10-day warmup with steeper ramp-up. Use with caution.',
-            'planned_duration_days' => 10,
-            'daily_rules' => [
+            'profile_type' => 'aggressive',
+            'day_rules' => [
                 '1'  => ['max_new_threads' => 3, 'max_replies' => 1, 'max_total' => 4],
                 '2'  => ['max_new_threads' => 5, 'max_replies' => 3, 'max_total' => 8],
                 '3'  => ['max_new_threads' => 8, 'max_replies' => 5, 'max_total' => 13],
@@ -60,16 +64,21 @@ class WarmupSeeder extends Seeder
                 '9'  => ['max_new_threads' => 30, 'max_replies' => 26, 'max_total' => 56],
                 '10' => ['max_new_threads' => 32, 'max_replies' => 28, 'max_total' => 60],
             ],
+            'default_max_new_threads_per_day' => 3,
+            'default_max_reply_actions_per_day' => 3,
+            'default_max_total_actions_per_day' => 8,
             'thread_length_distribution' => ['2' => 50, '3' => 30, '4' => 15, '5' => 5],
             'reply_delay_distribution' => ['min_minutes' => 10, 'max_minutes' => 120, 'peak_minutes' => 40],
             'provider_distribution' => ['google' => 50, 'microsoft' => 30, 'other' => 20],
+            'working_hours_start' => '08:00:00',
+            'working_hours_end' => '18:00:00',
         ]);
 
         // Conservative profile: 20-day slow warmup
-        WarmupProfile::updateOrCreate(['name' => 'Conservative (20 Day)'], [
+        WarmupProfile::updateOrCreate(['profile_name' => 'Conservative (20 Day)'], [
             'description' => 'Slow and steady 20-day warmup for sensitive domains.',
-            'planned_duration_days' => 20,
-            'daily_rules' => [
+            'profile_type' => 'conservative',
+            'day_rules' => [
                 '1'  => ['max_new_threads' => 1, 'max_replies' => 0, 'max_total' => 1],
                 '2'  => ['max_new_threads' => 1, 'max_replies' => 1, 'max_total' => 2],
                 '3'  => ['max_new_threads' => 2, 'max_replies' => 1, 'max_total' => 3],
@@ -91,21 +100,29 @@ class WarmupSeeder extends Seeder
                 '19' => ['max_new_threads' => 16, 'max_replies' => 15, 'max_total' => 31],
                 '20' => ['max_new_threads' => 17, 'max_replies' => 16, 'max_total' => 33],
             ],
+            'default_max_new_threads_per_day' => 1,
+            'default_max_reply_actions_per_day' => 1,
+            'default_max_total_actions_per_day' => 3,
             'thread_length_distribution' => ['2' => 30, '3' => 35, '4' => 25, '5' => 10],
             'reply_delay_distribution' => ['min_minutes' => 30, 'max_minutes' => 300, 'peak_minutes' => 90],
             'provider_distribution' => ['google' => 50, 'microsoft' => 30, 'other' => 20],
+            'working_hours_start' => '08:00:00',
+            'working_hours_end' => '18:00:00',
         ]);
 
         // Maintenance profile
-        WarmupProfile::updateOrCreate(['name' => 'Maintenance'], [
+        WarmupProfile::updateOrCreate(['profile_name' => 'Maintenance'], [
             'description' => 'Low-volume maintenance mode to keep reputation alive.',
-            'planned_duration_days' => 30,
-            'daily_rules' => [
-                'default' => ['max_new_threads' => 3, 'max_replies' => 3, 'max_total' => 6],
-            ],
+            'profile_type' => 'maintenance',
+            'day_rules' => null,
+            'default_max_new_threads_per_day' => 3,
+            'default_max_reply_actions_per_day' => 3,
+            'default_max_total_actions_per_day' => 6,
             'thread_length_distribution' => ['2' => 50, '3' => 30, '4' => 20],
             'reply_delay_distribution' => ['min_minutes' => 30, 'max_minutes' => 240, 'peak_minutes' => 90],
             'provider_distribution' => ['google' => 50, 'microsoft' => 30, 'other' => 20],
+            'working_hours_start' => '08:00:00',
+            'working_hours_end' => '18:00:00',
         ]);
     }
 
@@ -242,9 +259,24 @@ class WarmupSeeder extends Seeder
         ];
 
         foreach ($templates as $data) {
+            $fingerprint = hash('sha256', ($data['template_type'] ?? '') . '|' . ($data['subject'] ?? '') . '|' . ($data['body'] ?? ''));
             ContentTemplate::updateOrCreate(
-                ['name' => $data['name']],
-                array_merge($data, ['is_active' => true, 'usage_count' => 0])
+                ['content_fingerprint' => $fingerprint],
+                [
+                    'template_type' => $data['template_type'],
+                    'category' => $data['category'] ?? 'general',
+                    'subject' => $data['subject'],
+                    'body' => $data['body'],
+                    'greetings' => $data['greetings'] ?? null,
+                    'signoffs' => $data['signoffs'] ?? null,
+                    'variations' => $data['variations'] ?? null,
+                    'placeholders' => $data['placeholders'] ?? null,
+                    'warmup_stage' => $data['warmup_stage'] ?? 'any',
+                    'cooldown_minutes' => $data['cooldown_minutes'] ?? 60,
+                    'content_fingerprint' => $fingerprint,
+                    'is_active' => true,
+                    'usage_count' => 0,
+                ]
             );
         }
     }
