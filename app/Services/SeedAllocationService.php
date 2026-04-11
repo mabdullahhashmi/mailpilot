@@ -25,10 +25,10 @@ class SeedAllocationService
         return SeedMailbox::where('status', 'active')
             ->where('email_address', 'NOT LIKE', "%@{$senderDomainName}")
             ->whereDoesntHave('pauseRules', function ($q) {
-                $q->where('is_active', true)
+                $q->where('status', 'active')
                   ->where(function ($q2) {
-                      $q2->whereNull('pause_until')
-                        ->orWhere('pause_until', '>', now());
+                      $q2->whereNull('auto_resume_at')
+                        ->orWhere('auto_resume_at', '>', now());
                   });
             })
             ->get()
@@ -48,7 +48,7 @@ class SeedAllocationService
         }
 
         // Group by provider
-        $byProvider = $eligibleSeeds->groupBy('provider');
+        $byProvider = $eligibleSeeds->groupBy('provider_type');
 
         $selected = collect();
         $remaining = $count;
@@ -73,14 +73,24 @@ class SeedAllocationService
             $selected = $selected->merge($leftover);
         }
 
-        // Log usage
+        // Log usage (updateOrCreate since unique constraint on [seed_mailbox_id, log_date])
         foreach ($selected as $seed) {
-            SeedUsageLog::create([
-                'seed_mailbox_id' => $seed->id,
-                'sender_mailbox_id' => $sender->id,
-                'domain_id' => $domain->id,
-                'used_date' => today(),
-                'action_type' => 'allocated',
+            $log = SeedUsageLog::updateOrCreate(
+                ['seed_mailbox_id' => $seed->id, 'log_date' => today()],
+                ['used_date' => today()]
+            );
+
+            $log->increment('interactions_today');
+
+            // Track per-sender and per-domain usage in JSON columns
+            $perSender = $log->per_sender_usage ?? [];
+            $perSender[$sender->id] = ($perSender[$sender->id] ?? 0) + 1;
+            $perDomain = $log->per_domain_usage ?? [];
+            $perDomain[$domain->id] = ($perDomain[$domain->id] ?? 0) + 1;
+
+            $log->update([
+                'per_sender_usage' => $perSender,
+                'per_domain_usage' => $perDomain,
             ]);
         }
 
@@ -91,12 +101,11 @@ class SeedAllocationService
     {
         $dailyCap = $seed->daily_total_interaction_cap ?? 20;
 
-        $todayCount = SeedUsageLog::where('seed_mailbox_id', $seed->id)
-            ->where(function ($q) {
-                $q->where('used_date', today())
-                  ->orWhere('log_date', today());
-            })
-            ->count();
+        $todayLog = SeedUsageLog::where('seed_mailbox_id', $seed->id)
+            ->where('log_date', today())
+            ->first();
+
+        $todayCount = $todayLog?->interactions_today ?? 0;
 
         return $todayCount < $dailyCap;
     }
@@ -105,11 +114,18 @@ class SeedAllocationService
     {
         $cooldownDays = 2;
 
-        $recentPairing = SeedUsageLog::where('seed_mailbox_id', $seed->id)
-            ->where('sender_mailbox_id', $sender->id)
-            ->where('used_date', '>=', today()->subDays($cooldownDays))
-            ->exists();
+        // Check if this sender appeared in recent per_sender_usage
+        $recentLogs = SeedUsageLog::where('seed_mailbox_id', $seed->id)
+            ->where('log_date', '>=', today()->subDays($cooldownDays))
+            ->get();
 
-        return !$recentPairing;
+        foreach ($recentLogs as $log) {
+            $perSender = $log->per_sender_usage ?? [];
+            if (isset($perSender[$sender->id]) && $perSender[$sender->id] > 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

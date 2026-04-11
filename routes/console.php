@@ -21,6 +21,57 @@ Artisan::command('warmup:run-diagnostic', function () {
     $this->info("Status: {$snapshot->overall_status} | Events: {$snapshot->events_completed}/{$snapshot->events_planned} | Health: {$snapshot->avg_health_score}");
 })->purpose('Run system diagnostic and create daily snapshot');
 
+Artisan::command('warmup:plan-now', function () {
+    $this->info('Running daily planner NOW...');
+    try {
+        $runs = app(\App\Services\DailyPlannerService::class)->planAllCampaigns();
+        $this->info("Planned " . count($runs) . " campaign(s).");
+        foreach ($runs as $run) {
+            $this->line("  Campaign #{$run->warmup_campaign_id}: {$run->new_thread_target} new threads, {$run->reply_target} replies");
+        }
+    } catch (\Throwable $e) {
+        $this->error("Failed: " . $e->getMessage());
+        $this->line($e->getTraceAsString());
+    }
+})->purpose('Manually trigger the daily planner (creates threads + events)');
+
+Artisan::command('warmup:process-now {batch=20}', function (int $batch) {
+    $this->info("Processing up to {$batch} due events NOW...");
+    try {
+        $run = app(\App\Services\SchedulerService::class)->processEvents($batch);
+        $this->info("Processed: {$run->events_processed} | Succeeded: {$run->events_succeeded} | Failed: {$run->events_failed} | Skipped: {$run->events_skipped}");
+    } catch (\Throwable $e) {
+        $this->error("Failed: " . $e->getMessage());
+        $this->line($e->getTraceAsString());
+    }
+})->purpose('Manually trigger the event scheduler (processes due warmup events)');
+
+Artisan::command('warmup:status', function () {
+    $campaigns = \App\Models\WarmupCampaign::with(['senderMailbox', 'profile'])->get();
+    if ($campaigns->isEmpty()) {
+        $this->warn('No warmup campaigns found. Create one first via the dashboard.');
+        return;
+    }
+    foreach ($campaigns as $c) {
+        $pending = $c->events()->where('status', 'pending')->count();
+        $completed = $c->events()->where('status', 'completed')->count();
+        $failed = $c->events()->where('status', 'final_failed')->count();
+        $threads = $c->threads()->count();
+        $this->line("Campaign #{$c->id} [{$c->status}] {$c->senderMailbox?->email_address}");
+        $this->line("  Day {$c->current_day_number} | Stage: {$c->current_stage}");
+        $this->line("  Threads: {$threads} | Events: pending={$pending}, completed={$completed}, failed={$failed}");
+    }
+
+    $senders = \App\Models\SenderMailbox::where('status', 'active')->count();
+    $seeds = \App\Models\SeedMailbox::where('status', 'active')->count();
+    $templates = \App\Models\ContentTemplate::where('is_active', true)->count();
+    $this->newLine();
+    $this->line("Active senders: {$senders} | Active seeds: {$seeds} | Active templates: {$templates}");
+
+    if ($seeds === 0) $this->error('WARNING: No active seed mailboxes! Warmup cannot work without seeds.');
+    if ($templates === 0) $this->error('WARNING: No content templates! Run: php artisan warmup:seed-templates');
+})->purpose('Show warmup system status (campaigns, events, seeds, templates)');
+
 /*
 |--------------------------------------------------------------------------
 | Warmup Engine Scheduled Commands

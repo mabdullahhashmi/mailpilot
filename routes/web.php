@@ -106,6 +106,9 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
 
     // System Health (F4)
     Route::get('system-health', [\App\Http\Controllers\Api\SystemHealthController::class, 'index']);
+    Route::post('system-health/trigger-planner', [\App\Http\Controllers\Api\SystemHealthController::class, 'triggerPlanner']);
+    Route::post('system-health/trigger-scheduler', [\App\Http\Controllers\Api\SystemHealthController::class, 'triggerScheduler']);
+    Route::get('system-health/readiness', [\App\Http\Controllers\Api\SystemHealthController::class, 'readinessCheck']);
 
     // Data Export (F5)
     Route::get('export/event-logs', [\App\Http\Controllers\Api\ExportController::class, 'eventLogs']);

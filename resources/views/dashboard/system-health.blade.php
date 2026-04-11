@@ -24,6 +24,38 @@
         </div>
     </div>
 
+    <!-- Readiness Check + Manual Controls -->
+    <div class="glass rounded-2xl p-5 mb-6">
+        <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="shield-check" class="w-4 h-4 text-brand-400"></i>
+            <h3 class="text-white font-semibold text-sm">Warmup Engine Controls</h3>
+        </div>
+
+        <!-- Readiness Checks -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-5">
+            <template x-for="[key, label, icon] in [['senders','Senders','mail'],['seeds','Seeds','inbox'],['templates','Templates','file-text'],['campaigns','Campaigns','flame'],['events','Events','zap'],['domains','Domains','globe']]" :key="key">
+                <div class="p-3 rounded-xl bg-white/[0.03] text-center">
+                    <i :data-lucide="icon" class="w-4 h-4 mx-auto mb-1.5" :class="readiness.checks?.[key]?.ok ? 'text-emerald-400' : 'text-red-400'"></i>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider" :class="readiness.checks?.[key]?.ok ? 'text-emerald-400' : 'text-red-400'" x-text="label"></p>
+                    <p class="text-[9px] text-zinc-600 mt-0.5 leading-tight" x-text="readiness.checks?.[key]?.detail ?? 'Checking...'"></p>
+                </div>
+            </template>
+        </div>
+
+        <!-- Manual Trigger Buttons -->
+        <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-white/5">
+            <button @click="runPlanner()" :disabled="runningPlanner" class="btn-primary px-4 py-2.5 rounded-xl text-xs text-white font-medium flex items-center gap-2">
+                <span :class="runningPlanner && 'animate-spin'" class="inline-flex"><i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i></span>
+                <span x-text="runningPlanner ? 'Planning...' : 'Run Daily Planner'"></span>
+            </button>
+            <button @click="runScheduler()" :disabled="runningScheduler" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition">
+                <span :class="runningScheduler && 'animate-spin'" class="inline-flex"><i data-lucide="play" class="w-3.5 h-3.5"></i></span>
+                <span x-text="runningScheduler ? 'Processing...' : 'Process Due Events'"></span>
+            </button>
+            <span class="text-zinc-600 text-[10px] leading-tight max-w-xs">Planner creates threads & events for active campaigns. Scheduler executes due events (sends emails).</span>
+        </div>
+    </div>
+
     <!-- Core Metrics -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div class="stat-card glass rounded-2xl p-5">
@@ -78,7 +110,7 @@
                 <h3 class="text-white font-semibold text-sm">Cron Timestamps</h3>
             </div>
             <div class="space-y-3">
-                <template x-for="[label, key] in [['Scheduler', 'last_scheduler'], ['Planner', 'last_planner'], ['Executor', 'last_executor'], ['DNS Check', 'last_dns_check']]" :key="key">
+                <template x-for="[label, key] in [['Scheduler', 'last_scheduler'], ['Planner', 'last_planner'], ['Health', 'last_health'], ['DNS Check', 'last_dns_check']]" :key="key">
                     <div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.03]">
                         <div class="flex items-center gap-2">
                             <div class="w-2 h-2 rounded-full" :class="isCronRecent(data.cron?.[key]) ? 'bg-emerald-400 pulse-dot' : 'bg-zinc-600'"></div>
@@ -225,6 +257,9 @@ function systemHealthPage() {
     return {
         data: {}, loading: false, lastRefresh: '—',
         exportFrom: '', exportTo: '',
+        readiness: {},
+        runningPlanner: false,
+        runningScheduler: false,
 
         get overallOk() {
             return (this.data.queue?.failed_jobs || 0) === 0 &&
@@ -233,7 +268,7 @@ function systemHealthPage() {
         },
 
         async init() {
-            await this.load();
+            await Promise.all([this.load(), this.loadReadiness()]);
             this.$nextTick(() => lucide.createIcons());
         },
 
@@ -245,6 +280,37 @@ function systemHealthPage() {
             } catch(e) { showToast('Failed to load system health', 'error'); }
             this.loading = false;
             this.$nextTick(() => lucide.createIcons());
+        },
+
+        async loadReadiness() {
+            try {
+                this.readiness = await apiCall('/api/warmup/system-health/readiness');
+            } catch(e) { /* silent */ }
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async runPlanner() {
+            this.runningPlanner = true;
+            try {
+                const res = await apiCall('/api/warmup/system-health/trigger-planner', { method: 'POST' });
+                showToast(res.message || 'Planner completed', res.success ? 'success' : 'error');
+                await Promise.all([this.load(), this.loadReadiness()]);
+            } catch(e) {
+                showToast('Planner failed: ' + (e.message || 'Unknown error'), 'error');
+            }
+            this.runningPlanner = false;
+        },
+
+        async runScheduler() {
+            this.runningScheduler = true;
+            try {
+                const res = await apiCall('/api/warmup/system-health/trigger-scheduler', { method: 'POST' });
+                showToast(res.message || 'Scheduler completed', res.success ? 'success' : 'error');
+                await Promise.all([this.load(), this.loadReadiness()]);
+            } catch(e) {
+                showToast('Scheduler failed: ' + (e.message || 'Unknown error'), 'error');
+            }
+            this.runningScheduler = false;
         },
 
         isCronRecent(ts) {

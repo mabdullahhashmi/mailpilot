@@ -214,7 +214,7 @@ class SafetyService
         PauseRule::create([
             'pausable_type' => SenderMailbox::class,
             'pausable_id' => $sender->id,
-            'reason' => 'threshold_breach',
+            'reason' => 'health_degradation',
             'details' => $reason,
             'paused_at' => now(),
             'auto_resume_at' => now()->addHours(48),
@@ -238,13 +238,15 @@ class SafetyService
      */
     public function getRampDownCap(SenderMailbox $sender): int
     {
+        $baseCap = $sender->daily_send_cap ?: 5;
+
         if (!$sender->ramp_down_active) {
-            return $sender->daily_send_cap;
+            return $baseCap;
         }
 
         // Gradual recovery: start at ramp_down_percentage%, add 10% per clean day
         $recoveryPercent = min(100, $sender->ramp_down_percentage + ($sender->consecutive_clean_days * 10));
-        $effectiveCap = max(1, (int)ceil($sender->daily_send_cap * $recoveryPercent / 100));
+        $effectiveCap = max(1, (int)ceil($baseCap * $recoveryPercent / 100));
 
         // If fully recovered, disable ramp-down
         if ($recoveryPercent >= 100) {

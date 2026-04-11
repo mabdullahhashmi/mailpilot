@@ -10,8 +10,12 @@ use App\Models\WarmupCampaign;
 use App\Models\WarmupEvent;
 use App\Models\SystemAlert;
 use App\Models\SystemSetting;
+use App\Services\DailyPlannerService;
+use App\Services\SchedulerService;
+use App\Models\ContentTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SystemHealthController extends Controller
 {
@@ -27,10 +31,10 @@ class SystemHealthController extends Controller
         }
 
         // Cron timestamps
-        $lastScheduler = SystemSetting::get('cron_last_scheduler_run');
-        $lastPlanner = SystemSetting::get('cron_last_planner_run');
-        $lastExecutor = SystemSetting::get('cron_last_executor_run');
-        $lastDns = SystemSetting::get('cron_last_dns_check');
+        $lastScheduler = SystemSetting::get('last_scheduler_run');
+        $lastPlanner = SystemSetting::get('last_planner_run');
+        $lastHealth = SystemSetting::get('last_health_run');
+        $lastDns = SystemSetting::get('last_dns_run');
 
         // Entity counts
         $senders = SenderMailbox::selectRaw("
@@ -89,7 +93,7 @@ class SystemHealthController extends Controller
             'cron' => [
                 'last_scheduler' => $lastScheduler,
                 'last_planner' => $lastPlanner,
-                'last_executor' => $lastExecutor,
+                'last_health' => $lastHealth,
                 'last_dns_check' => $lastDns,
             ],
             'entities' => [
@@ -111,6 +115,122 @@ class SystemHealthController extends Controller
             'pending_events' => $pendingEvents,
             'auto_pause_count' => $autoPauseCount,
             'recent_alerts' => $recentAlerts,
+        ]);
+    }
+
+    /**
+     * Manually trigger the daily planner (creates threads + events for active campaigns).
+     */
+    public function triggerPlanner(DailyPlannerService $planner): JsonResponse
+    {
+        try {
+            $runs = $planner->planAllCampaigns();
+            $results = [];
+            foreach ($runs as $run) {
+                $results[] = [
+                    'campaign_id' => $run->warmup_campaign_id,
+                    'new_threads' => $run->new_thread_target,
+                    'replies' => $run->reply_target,
+                    'status' => $run->status,
+                ];
+            }
+            SystemSetting::set('last_planner_run', now()->toDateTimeString(), 'cron');
+            return response()->json([
+                'success' => true,
+                'message' => 'Daily planner executed. Planned ' . count($runs) . ' campaign(s).',
+                'runs' => $results,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Manual planner trigger failed: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Planner failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Manually trigger the event scheduler (processes due warmup events).
+     */
+    public function triggerScheduler(SchedulerService $scheduler): JsonResponse
+    {
+        try {
+            $run = $scheduler->processEvents(20);
+            SystemSetting::set('last_scheduler_run', now()->toDateTimeString(), 'cron');
+            return response()->json([
+                'success' => true,
+                'message' => "Processed {$run->events_processed} events. Succeeded: {$run->events_succeeded}, Failed: {$run->events_failed}, Skipped: {$run->events_skipped}",
+                'run' => [
+                    'processed' => $run->events_processed,
+                    'succeeded' => $run->events_succeeded,
+                    'failed' => $run->events_failed,
+                    'skipped' => $run->events_skipped,
+                    'execution_time_ms' => $run->execution_time_ms,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Manual scheduler trigger failed: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Scheduler failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Quick system readiness check - are all prerequisites met?
+     */
+    public function readinessCheck(): JsonResponse
+    {
+        $checks = [];
+
+        // Check active senders
+        $activeSenders = SenderMailbox::where('status', 'active')->count();
+        $checks['senders'] = [
+            'ok' => $activeSenders > 0,
+            'detail' => $activeSenders > 0 ? "{$activeSenders} active sender(s)" : 'No active senders. Add at least one sender mailbox.',
+        ];
+
+        // Check active seeds
+        $activeSeeds = SeedMailbox::where('status', 'active')->count();
+        $checks['seeds'] = [
+            'ok' => $activeSeeds > 0,
+            'detail' => $activeSeeds > 0 ? "{$activeSeeds} active seed(s)" : 'No active seeds. Add seed mailboxes (Gmail/Outlook).',
+        ];
+
+        // Check content templates
+        $activeTemplates = ContentTemplate::where('is_active', true)->count();
+        $checks['templates'] = [
+            'ok' => $activeTemplates > 0,
+            'detail' => $activeTemplates > 0 ? "{$activeTemplates} active template(s)" : 'No templates. Run: php artisan warmup:seed-templates',
+        ];
+
+        // Check active campaigns
+        $activeCampaigns = WarmupCampaign::where('status', 'active')->count();
+        $checks['campaigns'] = [
+            'ok' => $activeCampaigns > 0,
+            'detail' => $activeCampaigns > 0 ? "{$activeCampaigns} active campaign(s)" : 'No active campaigns. Create and start a warmup campaign.',
+        ];
+
+        // Check pending events
+        $pendingEvents = WarmupEvent::where('status', 'pending')->count();
+        $checks['events'] = [
+            'ok' => $pendingEvents > 0 || $activeCampaigns === 0,
+            'detail' => $pendingEvents > 0 ? "{$pendingEvents} pending event(s)" : ($activeCampaigns > 0 ? 'No pending events. Run the daily planner first.' : 'N/A (no campaigns)'),
+        ];
+
+        // Check domains
+        $domains = Domain::count();
+        $checks['domains'] = [
+            'ok' => $domains > 0,
+            'detail' => $domains > 0 ? "{$domains} domain(s)" : 'No domains. Domains are auto-created when adding senders.',
+        ];
+
+        $allOk = collect($checks)->every(fn($c) => $c['ok']);
+
+        return response()->json([
+            'ready' => $allOk,
+            'checks' => $checks,
         ]);
     }
 }

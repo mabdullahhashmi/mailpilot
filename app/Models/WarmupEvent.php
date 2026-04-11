@@ -35,6 +35,11 @@ class WarmupEvent extends Model
         return $this->belongsTo(WarmupCampaign::class, 'warmup_campaign_id');
     }
 
+    public function warmupCampaign(): BelongsTo
+    {
+        return $this->belongsTo(WarmupCampaign::class, 'warmup_campaign_id');
+    }
+
     public function logs(): HasMany
     {
         return $this->hasMany(WarmupEventLog::class);
