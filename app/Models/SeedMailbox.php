@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class SeedMailbox extends Model
 {
@@ -41,7 +42,7 @@ class SeedMailbox extends Model
         return $this->hasMany(SeedUsageLog::class);
     }
 
-    public function pauseRules(): HasMany
+    public function pauseRules(): MorphMany
     {
         return $this->morphMany(PauseRule::class, 'pausable');
     }
