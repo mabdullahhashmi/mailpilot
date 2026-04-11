@@ -117,4 +117,43 @@ class WarmupCampaignController extends Controller
         $campaign->delete();
         return response()->json(['message' => 'Campaign deleted']);
     }
+
+    /**
+     * Get scheduled timeline for a campaign — all events with times and countdowns.
+     */
+    public function schedule(int $id): JsonResponse
+    {
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
+
+        $events = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
+            ->whereDate('scheduled_at', today())
+            ->orderBy('scheduled_at')
+            ->with(['thread.senderMailbox', 'thread.seedMailbox'])
+            ->get()
+            ->map(function ($event) {
+                $sender = $event->thread?->senderMailbox;
+                $seed = $event->thread?->seedMailbox;
+
+                return [
+                    'id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'status' => $event->status,
+                    'scheduled_at' => $event->scheduled_at?->toIso8601String(),
+                    'executed_at' => $event->executed_at?->toIso8601String(),
+                    'thread_id' => $event->thread_id,
+                    'sender_email' => $sender?->email_address,
+                    'seed_email' => $seed?->email_address,
+                    'subject' => $event->thread?->subject_line,
+                    'priority' => $event->priority,
+                    'failure_reason' => $event->failure_reason,
+                ];
+            });
+
+        return response()->json([
+            'campaign_id' => $campaign->id,
+            'campaign_name' => $campaign->campaign_name,
+            'server_time' => now()->toIso8601String(),
+            'events' => $events,
+        ]);
+    }
 }

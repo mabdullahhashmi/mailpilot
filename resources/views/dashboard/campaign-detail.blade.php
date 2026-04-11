@@ -63,8 +63,8 @@
 
         <!-- Tabs -->
         <div class="flex gap-1 mb-6 border-b border-white/5 pb-px">
-            <template x-for="t in ['overview','threads','events']" :key="t">
-                <button @click="tab = t" class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition"
+            <template x-for="t in ['overview','schedule','threads','events']" :key="t">
+                <button @click="tab = t; if(t === 'schedule') loadSchedule();" class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition"
                         :class="tab === t ? 'text-white bg-white/5 border-b-2 border-brand-500' : 'text-zinc-500 hover:text-zinc-300'"
                         x-text="t.charAt(0).toUpperCase() + t.slice(1)"></button>
             </template>
@@ -151,6 +151,104 @@
                     <div class="h-64">
                         <canvas id="breakdownChart"></canvas>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Tab — Live Countdown Timeline -->
+        <div x-show="tab === 'schedule'">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h4 class="text-white font-semibold text-sm">Today's Schedule</h4>
+                    <p class="text-zinc-500 text-xs mt-0.5">Exact send/reply times with live countdowns. Refreshes every 30s.</p>
+                </div>
+                <button @click="loadSchedule()" class="px-3 py-1.5 rounded-lg text-xs font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition flex items-center gap-1.5">
+                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh
+                </button>
+            </div>
+
+            <div x-show="scheduleLoading" class="text-center py-12">
+                <i data-lucide="loader" class="w-5 h-5 text-zinc-500 animate-spin mx-auto"></i>
+                <p class="text-zinc-500 text-xs mt-2">Loading schedule...</p>
+            </div>
+
+            <div x-show="!scheduleLoading && scheduleEvents.length === 0" class="text-center py-16">
+                <div class="w-14 h-14 rounded-2xl glass flex items-center justify-center mx-auto mb-3">
+                    <i data-lucide="calendar-x" class="w-6 h-6 text-zinc-600"></i>
+                </div>
+                <p class="text-zinc-400 font-medium text-sm">No events scheduled for today</p>
+                <p class="text-zinc-600 text-xs mt-1">Run the Daily Planner from System Health to generate today's schedule.</p>
+            </div>
+
+            <!-- Schedule Timeline -->
+            <div x-show="!scheduleLoading && scheduleEvents.length > 0" class="space-y-0">
+                <!-- Summary cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-white" x-text="scheduleEvents.length"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Total Today</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-amber-400" x-text="scheduleEvents.filter(e => e.status === 'pending').length"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Pending</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-emerald-400" x-text="scheduleEvents.filter(e => e.status === 'completed').length"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Completed</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-red-400" x-text="scheduleEvents.filter(e => e.status === 'failed' || e.status === 'final_failed').length"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Failed</p>
+                    </div>
+                </div>
+
+                <!-- Timeline list -->
+                <div class="glass rounded-2xl overflow-hidden">
+                    <template x-for="(ev, idx) in scheduleEvents" :key="ev.id">
+                        <div class="flex items-center gap-4 px-5 py-3.5 border-b border-white/[0.03] hover:bg-white/[0.02] transition"
+                             :class="ev.status === 'completed' ? 'opacity-60' : ''">
+                            
+                            <!-- Timeline dot -->
+                            <div class="flex flex-col items-center gap-1 w-6">
+                                <div class="w-3 h-3 rounded-full border-2"
+                                     :class="ev.status === 'completed' ? 'bg-emerald-500 border-emerald-500' : ev.status === 'pending' ? 'bg-transparent border-amber-400 animate-pulse' : ev.status === 'executing' ? 'bg-brand-500 border-brand-500 animate-pulse' : 'bg-red-500 border-red-500'"></div>
+                            </div>
+
+                            <!-- Event icon -->
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                                 :class="eventIcon(ev.event_type).bg">
+                                <i :data-lucide="eventIcon(ev.event_type).icon" class="w-4 h-4" :class="eventIcon(ev.event_type).color"></i>
+                            </div>
+
+                            <!-- Event info -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-white text-sm font-medium" x-text="formatEventType(ev.event_type)"></span>
+                                    <span class="badge px-1.5 py-0.5 rounded text-[9px]"
+                                          :class="ev.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : ev.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : ev.status === 'executing' ? 'bg-brand-500/15 text-brand-400' : 'bg-red-500/15 text-red-400'"
+                                          x-text="ev.status"></span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-zinc-500 text-xs" x-text="ev.sender_email ? (ev.sender_email + ' → ' + (ev.seed_email || '—')) : '—'"></span>
+                                </div>
+                                <p class="text-zinc-600 text-[10px] truncate mt-0.5" x-show="ev.subject" x-text="'Subject: ' + ev.subject"></p>
+                                <p class="text-red-400/70 text-[10px] truncate mt-0.5" x-show="ev.failure_reason" x-text="ev.failure_reason"></p>
+                            </div>
+
+                            <!-- Time + Countdown -->
+                            <div class="text-right shrink-0 min-w-[120px]">
+                                <p class="text-white text-sm font-mono font-medium" x-text="formatTime(ev.scheduled_at)"></p>
+                                <template x-if="ev.status === 'pending'">
+                                    <p class="text-xs font-mono mt-0.5"
+                                       :class="getCountdown(ev.scheduled_at).isPast ? 'text-amber-400' : 'text-brand-400'"
+                                       x-text="getCountdown(ev.scheduled_at).text"></p>
+                                </template>
+                                <template x-if="ev.status === 'completed'">
+                                    <p class="text-emerald-500/60 text-[10px] mt-0.5" x-text="'Done ' + formatTime(ev.executed_at)"></p>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -242,6 +340,8 @@ function campaignDetail() {
     return {
         loading: true, campaign: {}, report: {}, readiness: {}, events: [], tab: 'overview',
         actChart: null, breakdownChart: null,
+        scheduleEvents: [], scheduleLoading: false, scheduleInterval: null, countdownInterval: null,
+        serverTimeDiff: 0,
 
         get campaignId() {
             return window.location.pathname.split('/').filter(Boolean).pop();
@@ -332,6 +432,90 @@ function campaignDetail() {
                 counts[t] = (counts[t] || 0) + 1;
             });
             return counts;
+        },
+
+        // ─── Schedule Tab Methods ───
+
+        async loadSchedule() {
+            this.scheduleLoading = true;
+            try {
+                const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}/schedule`);
+                this.scheduleEvents = data.events || [];
+                // Sync server time offset for accurate countdowns
+                if (data.server_time) {
+                    this.serverTimeDiff = new Date(data.server_time).getTime() - Date.now();
+                }
+            } catch(e) {
+                showToast('Failed to load schedule: ' + e.message, 'error');
+                this.scheduleEvents = [];
+            }
+            this.scheduleLoading = false;
+            this.$nextTick(() => lucide.createIcons());
+
+            // Auto-refresh schedule every 30 seconds
+            if (this.scheduleInterval) clearInterval(this.scheduleInterval);
+            this.scheduleInterval = setInterval(() => {
+                if (this.tab === 'schedule') this.loadSchedule();
+            }, 30000);
+        },
+
+        serverNow() {
+            return new Date(Date.now() + this.serverTimeDiff);
+        },
+
+        formatTime(isoStr) {
+            if (!isoStr) return '—';
+            const d = new Date(isoStr);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        },
+
+        getCountdown(isoStr) {
+            if (!isoStr) return { text: '—', isPast: false };
+            const target = new Date(isoStr).getTime();
+            const now = this.serverNow().getTime();
+            const diff = target - now;
+
+            if (diff <= 0) {
+                const pastSec = Math.abs(Math.floor(diff / 1000));
+                if (pastSec < 60) return { text: `Overdue ${pastSec}s`, isPast: true };
+                if (pastSec < 3600) return { text: `Overdue ${Math.floor(pastSec / 60)}m`, isPast: true };
+                return { text: `Overdue ${Math.floor(pastSec / 3600)}h ${Math.floor((pastSec % 3600) / 60)}m`, isPast: true };
+            }
+
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            if (h > 0) return { text: `in ${h}h ${m}m ${s}s`, isPast: false };
+            if (m > 0) return { text: `in ${m}m ${s}s`, isPast: false };
+            return { text: `in ${s}s`, isPast: false };
+        },
+
+        formatEventType(type) {
+            const map = {
+                'sender_send_initial': '📤 Sender → Send Email',
+                'seed_open_email': '📬 Seed → Open Email',
+                'seed_reply': '💬 Seed → Reply',
+                'sender_reply': '📤 Sender → Reply',
+                'seed_mark_important': '⭐ Seed → Mark Important',
+                'seed_star_message': '⭐ Seed → Star Message',
+                'seed_remove_from_spam': '🛡️ Seed → Rescue from Spam',
+                'thread_close': '🔒 Close Thread',
+            };
+            return map[type] || type.replace(/_/g, ' ');
+        },
+
+        eventIcon(type) {
+            const icons = {
+                'sender_send_initial': { icon: 'send', bg: 'bg-brand-500/15', color: 'text-brand-400' },
+                'seed_open_email':     { icon: 'mail-open', bg: 'bg-emerald-500/15', color: 'text-emerald-400' },
+                'seed_reply':          { icon: 'reply', bg: 'bg-blue-500/15', color: 'text-blue-400' },
+                'sender_reply':        { icon: 'reply-all', bg: 'bg-brand-500/15', color: 'text-brand-400' },
+                'seed_mark_important': { icon: 'star', bg: 'bg-amber-500/15', color: 'text-amber-400' },
+                'seed_star_message':   { icon: 'star', bg: 'bg-amber-500/15', color: 'text-amber-400' },
+                'seed_remove_from_spam': { icon: 'shield-check', bg: 'bg-emerald-500/15', color: 'text-emerald-400' },
+                'thread_close':        { icon: 'lock', bg: 'bg-zinc-500/15', color: 'text-zinc-400' },
+            };
+            return icons[type] || { icon: 'circle', bg: 'bg-zinc-500/15', color: 'text-zinc-400' };
         }
     };
 }

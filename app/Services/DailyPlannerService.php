@@ -27,8 +27,30 @@ class DailyPlannerService
     {
         $profile = $campaign->profile;
         $sender = $campaign->senderMailbox;
-        $domain = $campaign->domain;
         $day = $campaign->current_day_number;
+
+        if (!$profile) {
+            throw new \RuntimeException("Campaign #{$campaign->id} has no warmup profile assigned.");
+        }
+        if (!$sender) {
+            throw new \RuntimeException("Campaign #{$campaign->id} has no sender mailbox assigned.");
+        }
+
+        // Resolve domain: use campaign's domain or auto-detect from sender email
+        $domain = $campaign->domain;
+        if (!$domain) {
+            $senderDomain = explode('@', $sender->email_address)[1] ?? null;
+            if ($senderDomain) {
+                $domain = \App\Models\Domain::firstOrCreate(
+                    ['domain_name' => $senderDomain],
+                    ['status' => 'active']
+                );
+                $campaign->update(['domain_id' => $domain->id]);
+                $sender->update(['domain_id' => $domain->id]);
+            } else {
+                throw new \RuntimeException("Campaign #{$campaign->id}: Cannot determine domain from sender email.");
+            }
+        }
 
         // Get rules for today from profile
         $dayRules = $profile->getRulesForDay($day);

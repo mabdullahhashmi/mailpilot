@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class WarmupCampaign extends Model
 {
@@ -53,7 +54,7 @@ class WarmupCampaign extends Model
         return $this->hasMany(PlannerRun::class);
     }
 
-    public function pauseRules(): HasMany
+    public function pauseRules(): MorphMany
     {
         return $this->morphMany(PauseRule::class, 'pausable');
     }

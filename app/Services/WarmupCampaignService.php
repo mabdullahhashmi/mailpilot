@@ -14,12 +14,16 @@ class WarmupCampaignService
             ? WarmupProfile::findOrFail($profileId)
             : WarmupProfile::where('profile_type', 'default')->firstOrFail();
 
+        // Use profile day_rules count as duration (user sets this in profile builder)
+        $profileDays = is_array($profile->day_rules) ? count($profile->day_rules) : null;
+        $duration = $profileDays ?: $mailbox->target_warmup_duration_days ?: 14;
+
         $campaign = WarmupCampaign::create([
             'sender_mailbox_id' => $mailbox->id,
             'domain_id' => $mailbox->domain_id,
             'warmup_profile_id' => $profile->id,
             'start_date' => today(),
-            'planned_duration_days' => $mailbox->target_warmup_duration_days,
+            'planned_duration_days' => $duration,
             'current_day_number' => 1,
             'current_stage' => 'initial_trust',
             'status' => 'active',

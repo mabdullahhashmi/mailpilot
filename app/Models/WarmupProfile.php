@@ -33,6 +33,10 @@ class WarmupProfile extends Model
     {
         $dayRules = $this->day_rules ?? [];
 
+        // JSON keys are strings ("1", "2"), cast $day to string for lookup
+        if (isset($dayRules[(string)$day])) {
+            return $dayRules[(string)$day];
+        }
         if (isset($dayRules[$day])) {
             return $dayRules[$day];
         }

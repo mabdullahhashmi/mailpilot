@@ -50,6 +50,14 @@ class EventExecutionService
 
         $executionTime = (int)((microtime(true) - $startTime) * 1000);
 
+        // If event was deferred (rescheduled), do NOT mark as completed
+        $event->refresh();
+        if ($event->status === 'pending') {
+            // Event was rescheduled (e.g. seed_reply deferred due to pending open)
+            Log::info("Event #{$event->id} was deferred/rescheduled, skipping completion.");
+            return;
+        }
+
         // Mark event completed
         $event->update([
             'status' => 'completed',
@@ -145,8 +153,13 @@ class EventExecutionService
             ->exists();
 
         if ($pendingOpen) {
-            // Reschedule this reply to run after the open event
-            $event->update(['scheduled_at' => now()->addMinutes(rand(5, 15))]);
+            // Reschedule this reply to run after the open event — set status back to pending
+            $event->update([
+                'status' => 'pending',
+                'scheduled_at' => now()->addMinutes(rand(5, 15)),
+                'lock_token' => null,
+                'lock_expires_at' => null,
+            ]);
             return ['message' => "Reply deferred - open event pending for thread #{$thread->id}", 'schedule_next' => false];
         }
 

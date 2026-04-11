@@ -66,6 +66,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('campaigns/{id}/stop', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'stop']);
     Route::post('campaigns/{id}/restart', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'restart']);
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
+    Route::get('campaigns/{id}/schedule', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'schedule']);
 
     // Settings
     Route::get('settings', [\App\Http\Controllers\Api\SettingsController::class, 'index']);
