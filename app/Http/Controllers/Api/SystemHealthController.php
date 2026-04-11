@@ -137,14 +137,54 @@ class SystemHealthController extends Controller
                 ];
             }
             SystemSetting::set('last_planner_run', now()->toDateTimeString(), 'cron');
-            $skipped = $force ? 0 : null;
+
+            // If no runs, build diagnostic info
+            $diagnostic = null;
+            if (count($runs) === 0) {
+                $allCampaigns = WarmupCampaign::select('id', 'campaign_name', 'status', 'sender_mailbox_id', 'domain_id', 'warmup_profile_id')->get();
+                $activeCampaigns = $allCampaigns->where('status', 'active');
+                $diagnostic = [
+                    'total_campaigns' => $allCampaigns->count(),
+                    'active_campaigns' => $activeCampaigns->count(),
+                    'campaign_statuses' => $allCampaigns->groupBy('status')->map->count(),
+                    'campaigns' => $allCampaigns->map(fn($c) => [
+                        'id' => $c->id,
+                        'name' => $c->campaign_name,
+                        'status' => $c->status,
+                        'has_sender' => $c->sender_mailbox_id !== null,
+                        'has_domain' => $c->domain_id !== null,
+                        'has_profile' => $c->warmup_profile_id !== null,
+                    ]),
+                    'active_seeds' => SeedMailbox::where('status', 'active')->count(),
+                    'active_senders' => SenderMailbox::where('status', 'active')->count(),
+                ];
+
+                $reason = 'Unknown';
+                if ($allCampaigns->isEmpty()) {
+                    $reason = 'No campaigns exist. Create a warmup campaign first.';
+                } elseif ($activeCampaigns->isEmpty()) {
+                    $statuses = $allCampaigns->pluck('status')->unique()->implode(', ');
+                    $reason = "No active campaigns found. Existing campaign statuses: {$statuses}. Make sure your campaign status is 'active'.";
+                } elseif (!$force) {
+                    $reason = 'All active campaigns already planned today. Use Force Re-Plan to override.';
+                } else {
+                    $reason = 'Active campaigns exist but planner created 0 runs. Check Laravel logs for errors (seeds, profile, or safety cap issues).';
+                }
+
+                Log::warning('DailyPlanner returned 0 runs', $diagnostic);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $reason,
+                    'runs' => [],
+                    'diagnostic' => $diagnostic,
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => count($runs) > 0
-                    ? 'Daily planner executed. Planned ' . count($runs) . ' campaign(s).'
-                    : 'No campaigns planned. All may already be planned for today — use Force Re-Plan to override.',
+                'message' => 'Daily planner executed. Planned ' . count($runs) . ' campaign(s).',
                 'runs' => $results,
-                'already_planned_today' => count($runs) === 0 && !$force,
             ]);
         } catch (\Throwable $e) {
             Log::error('Manual planner trigger failed: ' . $e->getMessage(), ['exception' => $e]);

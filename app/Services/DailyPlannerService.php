@@ -109,6 +109,9 @@ class DailyPlannerService
     {
         $campaigns = $this->campaignService->getActiveCampaigns();
         $runs = [];
+        $errors = [];
+
+        Log::info("DailyPlanner: Found {$campaigns->count()} active campaign(s)");
 
         foreach ($campaigns as $campaign) {
             // Skip if already planned today (unless forced)
@@ -123,10 +126,10 @@ class DailyPlannerService
                 }
             } else {
                 // Force: delete today's existing plan runs so we can re-plan fresh
-                PlannerRun::where('warmup_campaign_id', $campaign->id)
+                $deleted = PlannerRun::where('warmup_campaign_id', $campaign->id)
                     ->where('plan_date', today())
                     ->delete();
-                Log::info("DailyPlanner: Force re-planning campaign #{$campaign->id}");
+                Log::info("DailyPlanner: Force re-planning campaign #{$campaign->id} (deleted {$deleted} old plan runs)");
             }
 
             try {
@@ -138,8 +141,17 @@ class DailyPlannerService
 
                 $runs[] = $this->planDay($campaign);
             } catch (\Throwable $e) {
-                Log::error("DailyPlanner failed for campaign #{$campaign->id}: {$e->getMessage()}");
+                $errors[] = "Campaign #{$campaign->id} ({$campaign->campaign_name}): {$e->getMessage()}";
+                Log::error("DailyPlanner failed for campaign #{$campaign->id}: {$e->getMessage()}", [
+                    'exception' => $e,
+                    'campaign' => $campaign->toArray(),
+                ]);
             }
+        }
+
+        // If there are errors and no runs, throw so the controller can report them
+        if (empty($runs) && !empty($errors)) {
+            throw new \RuntimeException('Planner failed for all campaigns: ' . implode(' | ', $errors));
         }
 
         return $runs;
