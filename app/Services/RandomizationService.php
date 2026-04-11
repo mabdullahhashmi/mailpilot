@@ -79,14 +79,31 @@ class RandomizationService
 
     /**
      * Randomize working window with slight variation each day.
+     * For tight windows (< 30 min), apply minimal or no jitter.
      */
     public function workingWindow(string $baseStart, string $baseEnd): array
     {
-        $startOffset = rand(-15, 30); // Start 15min early to 30min late
-        $endOffset = rand(-30, 15);   // End 30min early to 15min late
+        $start = Carbon::parse($baseStart);
+        $end = Carbon::parse($baseEnd);
 
-        $start = Carbon::parse($baseStart)->addMinutes($startOffset);
-        $end = Carbon::parse($baseEnd)->addMinutes($endOffset);
+        // Calculate window size in minutes
+        $windowSize = $start->diffInMinutes($end);
+
+        if ($windowSize <= 30) {
+            // Tight window: no jitter, use exact times
+            return [
+                'start' => $start->format('H:i:s'),
+                'end' => $end->format('H:i:s'),
+            ];
+        }
+
+        // For larger windows, apply proportional jitter (max 5% of window)
+        $maxJitter = max(1, (int)($windowSize * 0.05));
+        $startOffset = rand(-$maxJitter, $maxJitter);
+        $endOffset = rand(-$maxJitter, $maxJitter);
+
+        $start = $start->addMinutes($startOffset);
+        $end = $end->addMinutes($endOffset);
 
         // Ensure valid window
         if ($start->gte($end)) {

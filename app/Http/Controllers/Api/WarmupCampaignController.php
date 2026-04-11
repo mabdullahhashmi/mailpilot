@@ -7,6 +7,7 @@ use App\Models\SenderMailbox;
 use App\Services\WarmupCampaignService;
 use App\Services\ReportingService;
 use App\Services\ReadinessScoringService;
+use App\Services\DailyPlannerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,7 @@ class WarmupCampaignController extends Controller
         private WarmupCampaignService $campaignService,
         private ReportingService $reportingService,
         private ReadinessScoringService $readinessService,
+        private DailyPlannerService $plannerService,
     ) {}
 
     public function index(): JsonResponse
@@ -50,6 +52,14 @@ class WarmupCampaignController extends Controller
         }
         if (!empty($validated['time_window_end'])) {
             $campaign->update(['time_window_end' => $validated['time_window_end']]);
+        }
+
+        // Auto-plan events immediately after campaign creation
+        try {
+            $campaign->refresh();
+            $this->plannerService->planDay($campaign);
+        } catch (\Throwable $e) {
+            \Log::warning('Auto-plan after campaign creation failed: ' . $e->getMessage());
         }
 
         return response()->json($campaign->fresh(), 201);
