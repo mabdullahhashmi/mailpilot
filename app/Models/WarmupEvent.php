@@ -47,7 +47,11 @@ class WarmupEvent extends Model
 
     public function isRetryable(): bool
     {
-        return $this->status === 'failed' && $this->retry_count < $this->max_retries;
+        if ($this->retry_count >= $this->max_retries) {
+            return false;
+        }
+
+        return !in_array($this->status, ['completed', 'final_failed', 'cancelled'], true);
     }
 
     public function isDue(): bool
@@ -63,7 +67,10 @@ class WarmupEvent extends Model
 
         $affected = static::where('id', $this->id)
             ->where('status', 'pending')
-            ->whereNull('lock_token')
+            ->where(function ($q) {
+                $q->whereNull('lock_token')
+                  ->orWhere('lock_expires_at', '<', now());
+            })
             ->update([
                 'status' => 'locked',
                 'lock_token' => $token,

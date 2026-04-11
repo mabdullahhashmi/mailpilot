@@ -198,20 +198,28 @@ class SystemHealthController extends Controller
     /**
      * Manually trigger the event scheduler (processes due warmup events).
      */
-    public function triggerScheduler(SchedulerService $scheduler): JsonResponse
+    public function triggerScheduler(Request $request, SchedulerService $scheduler): JsonResponse
     {
         try {
-            $run = $scheduler->processEvents(20);
+            $defaultBatch = (int) SystemSetting::get('scheduler_batch_size', 20);
+            $batchSize = (int) $request->input('batch_size', $defaultBatch);
+            $batchSize = max(1, min($batchSize, 500));
+
+            $run = $scheduler->processEvents($batchSize, 10);
             SystemSetting::set('last_scheduler_run', now()->toDateTimeString(), 'cron');
+
+            $remainingDue = $run->summary['remaining_due'] ?? null;
             return response()->json([
                 'success' => true,
-                'message' => "Processed {$run->events_processed} events. Succeeded: {$run->events_succeeded}, Failed: {$run->events_failed}, Skipped: {$run->events_skipped}",
+                'message' => "Processed {$run->events_processed} events. Succeeded: {$run->events_succeeded}, Failed: {$run->events_failed}, Skipped: {$run->events_skipped}" . ($remainingDue !== null ? ". Remaining due: {$remainingDue}" : ''),
                 'run' => [
                     'processed' => $run->events_processed,
                     'succeeded' => $run->events_succeeded,
                     'failed' => $run->events_failed,
                     'skipped' => $run->events_skipped,
                     'execution_time_ms' => $run->execution_time_ms,
+                    'remaining_due' => $remainingDue,
+                    'batch_size' => $batchSize,
                 ],
             ]);
         } catch (\Throwable $e) {

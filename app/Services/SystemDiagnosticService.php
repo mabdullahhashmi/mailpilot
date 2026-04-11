@@ -104,10 +104,17 @@ class SystemDiagnosticService
         $eventsCompleted = WarmupEvent::whereDate('executed_at', today())->where('status', 'completed')->count();
         $eventsFailed = WarmupEvent::whereDate('scheduled_at', today())->where('status', 'final_failed')->count();
 
-        // Stuck events: locked for more than 10 minutes or pending past schedule
+                // Stuck events: stale locks or pending long past schedule
         $eventsStuck = WarmupEvent::where(function ($q) {
-            $q->where('status', 'locked')
-              ->where('lock_expires_at', '<', now());
+                        $q->whereIn('status', ['locked', 'executing'])
+                            ->where('lock_expires_at', '<', now());
+                })->orWhere(function ($q) {
+                        $q->where('status', 'pending')
+                            ->whereNotNull('lock_token')
+                            ->where(function ($qq) {
+                                    $qq->whereNull('lock_expires_at')
+                                         ->orWhere('lock_expires_at', '<', now());
+                            });
         })->orWhere(function ($q) {
             $q->where('status', 'pending')
               ->where('scheduled_at', '<', now()->subMinutes(30));
@@ -200,8 +207,15 @@ class SystemDiagnosticService
 
         // Get stuck events detail
         $stuckEvents = WarmupEvent::where(function ($q) {
-            $q->where('status', 'locked')
-              ->where('lock_expires_at', '<', now());
+                        $q->whereIn('status', ['locked', 'executing'])
+                            ->where('lock_expires_at', '<', now());
+                })->orWhere(function ($q) {
+                        $q->where('status', 'pending')
+                            ->whereNotNull('lock_token')
+                            ->where(function ($qq) {
+                                    $qq->whereNull('lock_expires_at')
+                                         ->orWhere('lock_expires_at', '<', now());
+                            });
         })->orWhere(function ($q) {
             $q->where('status', 'pending')
               ->where('scheduled_at', '<', now()->subMinutes(30));
@@ -226,13 +240,26 @@ class SystemDiagnosticService
      */
     public function fixStuckEvents(): int
     {
-        $fixed = WarmupEvent::where('status', 'locked')
+        $fixedLockedOrExecuting = WarmupEvent::whereIn('status', ['locked', 'executing'])
             ->where('lock_expires_at', '<', now())
             ->update([
                 'status' => 'pending',
                 'lock_token' => null,
                 'lock_expires_at' => null,
             ]);
+
+        $fixedPendingWithStaleToken = WarmupEvent::where('status', 'pending')
+            ->whereNotNull('lock_token')
+            ->where(function ($q) {
+                $q->whereNull('lock_expires_at')
+                  ->orWhere('lock_expires_at', '<', now());
+            })
+            ->update([
+                'lock_token' => null,
+                'lock_expires_at' => null,
+            ]);
+
+        $fixed = $fixedLockedOrExecuting + $fixedPendingWithStaleToken;
 
         if ($fixed > 0) {
             Log::info("[Diagnostic] Released {$fixed} stuck event locks");

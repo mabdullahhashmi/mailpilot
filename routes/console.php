@@ -95,7 +95,9 @@ Schedule::call(function () {
 Schedule::call(function () {
     $diagnostic = app(\App\Services\SystemDiagnosticService::class);
     try {
-        app(\App\Services\SchedulerService::class)->processEvents(20);
+        $batchSize = (int) \App\Models\SystemSetting::get('scheduler_batch_size', 20);
+        $batchSize = max(1, min($batchSize, 500));
+        app(\App\Services\SchedulerService::class)->processEvents($batchSize, 10);
         \App\Models\SystemSetting::set('last_scheduler_run', now()->toDateTimeString(), 'cron');
         $diagnostic->recordHeartbeat('warmup:process-events', true, null, 2);
     } catch (\Throwable $e) {
