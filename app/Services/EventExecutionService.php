@@ -528,11 +528,14 @@ class EventExecutionService
         $messageId = sprintf('%s@%s', bin2hex(random_bytes(16)), $fromMailbox->smtp_host ?: 'mailpilot.app');
 
         if ($inReplyTo) {
-            $email->getHeaders()->addTextHeader('In-Reply-To', "<{$inReplyTo}>");
-            $email->getHeaders()->addTextHeader('References', "<{$inReplyTo}>");
+            $replyId = trim($inReplyTo, " <>\t\n\r\0\x0B");
+            if ($replyId !== '') {
+                $email->getHeaders()->addIdHeader('In-Reply-To', $replyId);
+                $email->getHeaders()->addIdHeader('References', $replyId);
+            }
         }
 
-        $email->getHeaders()->addTextHeader('Message-ID', "<{$messageId}>");
+        $email->getHeaders()->addIdHeader('Message-ID', $messageId);
 
         $mailer = new \Symfony\Component\Mailer\Mailer($transport);
         $mailer->send($email);
