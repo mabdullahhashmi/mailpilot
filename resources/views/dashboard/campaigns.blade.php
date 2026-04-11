@@ -46,11 +46,11 @@
                 <!-- Stage Info -->
                 <div class="grid grid-cols-3 gap-2 mb-4">
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
-                        <p class="text-sm font-bold text-white" x-text="c.current_stage || '—'"></p>
+                        <p class="text-sm font-bold text-white" x-text="formatStage(c.current_stage)"></p>
                         <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Stage</p>
                     </div>
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
-                        <p class="text-sm font-bold text-white" x-text="c.sender_mailbox?.email_address?.split('@')[0] || '—'"></p>
+                        <p class="text-sm font-bold text-white truncate" x-text="c.sender_mailbox?.email_address || '—'" :title="c.sender_mailbox?.email_address"></p>
                         <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Sender</p>
                     </div>
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
@@ -171,6 +171,7 @@ function campaignsPage() {
         dayPercent(c) { const total = c.profile?.total_days || 14; return Math.min(100, Math.round(((c.current_day_number || 1) / total) * 100)); },
         statusGradient(s) { return { active: 'gradient-success', paused: 'gradient-warning', draft: 'bg-zinc-700', stopped: 'bg-red-900/50', completed: 'gradient-brand' }[s] || 'bg-zinc-700'; },
         statusBadge(s) { return { active: 'bg-emerald-500/15 text-emerald-400', paused: 'bg-amber-500/15 text-amber-400', draft: 'bg-zinc-500/15 text-zinc-400', stopped: 'bg-red-500/15 text-red-400', completed: 'bg-brand-500/15 text-brand-400' }[s] || 'bg-zinc-500/15 text-zinc-400'; },
+        formatStage(stage) { if (!stage) return '—'; return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); },
         async saveCampaign() {
             try { await apiCall('/api/warmup/campaigns', 'POST', this.form); showToast('Campaign created'); this.showModal = false; await this.init(); }
             catch(e) { showToast('Error: ' + e.message, 'error'); }
