@@ -14,6 +14,7 @@ use App\Services\DailyPlannerService;
 use App\Services\SchedulerService;
 use App\Models\ContentTemplate;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
