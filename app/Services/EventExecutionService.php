@@ -133,9 +133,13 @@ class EventExecutionService
         // Advance thread state
         $this->threadService->advanceThread($thread, $message);
 
-        // Update health tracking
-        $this->health->recordSend($sender);
-        $this->health->recordSeedInteraction($seed, $thread->domain);
+        // Update health tracking (non-critical — never crash send)
+        try {
+            $this->health->recordSend($sender);
+            $this->health->recordSeedInteraction($seed, $thread->domain);
+        } catch (\Throwable $he) {
+            Log::warning("Health tracking failed after send: {$he->getMessage()}");
+        }
 
         return ['message' => "Sent initial email to {$seed->email_address}", 'schedule_next' => true];
     }
@@ -203,9 +207,13 @@ class EventExecutionService
         ]);
 
         $this->threadService->advanceThread($thread, $message);
-        $this->health->recordReply($sender);
-        $this->health->recordSeedInteraction($seed, $thread->domain);
-        $this->seedHealth->recordSuccess($seed, 'reply');
+        try {
+            $this->health->recordReply($sender);
+            $this->health->recordSeedInteraction($seed, $thread->domain);
+            $this->seedHealth->recordSuccess($seed, 'reply');
+        } catch (\Throwable $he) {
+            Log::warning("Health tracking failed after reply: {$he->getMessage()}");
+        }
         $this->contentGuard->recordUsage($seed, $sender->email_address, $body);
 
         return ['message' => "Seed replied in thread #{$thread->id}", 'schedule_next' => true];
@@ -253,7 +261,7 @@ class EventExecutionService
         ]);
 
         $this->threadService->advanceThread($thread, $message);
-        $this->health->recordSend($sender);
+        try { $this->health->recordSend($sender); } catch (\Throwable $he) { Log::warning("Health recordSend failed: {$he->getMessage()}"); }
         $this->contentGuard->recordUsage($sender, $seed->email_address, $body, $template);
 
         return ['message' => "Sender replied in thread #{$thread->id}", 'schedule_next' => true];
@@ -283,8 +291,12 @@ class EventExecutionService
             }
 
             // Track open for health + sender health
-            $this->seedHealth->recordSuccess($seed, 'open');
-            $this->health->recordOpen($thread->senderMailbox);
+            try {
+                $this->seedHealth->recordSuccess($seed, 'open');
+                $this->health->recordOpen($thread->senderMailbox);
+            } catch (\Throwable $he) {
+                Log::warning("Health tracking failed after open: {$he->getMessage()}");
+            }
 
             return ['message' => $messageUid
                 ? "Seed opened message (UID: {$messageUid})"

@@ -160,7 +160,7 @@ class DailyPlannerService
                     // Delete events created by these plan runs
                     $eventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
                         ->whereDate('created_at', today())
-                        ->whereIn('status', ['pending', 'locked'])
+                        ->whereIn('status', ['pending', 'locked', 'final_failed', 'executing'])
                         ->pluck('id');
 
                     // Delete associated send slots
