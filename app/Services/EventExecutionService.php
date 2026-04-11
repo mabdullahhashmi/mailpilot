@@ -488,8 +488,8 @@ class EventExecutionService
 
         $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
             $fromMailbox->smtp_host,
-            $fromMailbox->smtp_port,
-            $fromMailbox->smtp_encryption === 'tls'
+            $fromMailbox->smtp_port ?: 587,
+            $fromMailbox->smtp_encryption === 'ssl' // true=implicit TLS (port 465), false=STARTTLS (port 587)
         );
         $transport->setUsername($fromMailbox->smtp_username);
         $transport->setPassword($password);
@@ -500,7 +500,7 @@ class EventExecutionService
             ->subject($subject)
             ->html($body);
 
-        $messageId = sprintf('%s@%s', bin2hex(random_bytes(16)), parse_url($fromMailbox->smtp_host, PHP_URL_HOST) ?: 'mailpilot');
+        $messageId = sprintf('%s@%s', bin2hex(random_bytes(16)), $fromMailbox->smtp_host ?: 'mailpilot.app');
 
         if ($inReplyTo) {
             $email->getHeaders()->addTextHeader('In-Reply-To', "<{$inReplyTo}>");

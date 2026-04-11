@@ -114,8 +114,8 @@ class MailboxService
 
             $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
                 $mailbox->smtp_host,
-                $mailbox->smtp_port,
-                $mailbox->smtp_encryption === 'tls'
+                $mailbox->smtp_port ?: 587,
+                $mailbox->smtp_encryption === 'ssl' // true=implicit TLS (port 465), false=STARTTLS (port 587)
             );
             $transport->setUsername($mailbox->smtp_username);
             $transport->setPassword($password);

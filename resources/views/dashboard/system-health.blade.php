@@ -292,7 +292,7 @@ function systemHealthPage() {
         async runPlanner() {
             this.runningPlanner = true;
             try {
-                const res = await apiCall('/api/warmup/system-health/trigger-planner', { method: 'POST' });
+                const res = await apiCall('/api/warmup/system-health/trigger-planner', 'POST');
                 showToast(res.message || 'Planner completed', res.success ? 'success' : 'error');
                 await Promise.all([this.load(), this.loadReadiness()]);
             } catch(e) {
@@ -304,7 +304,7 @@ function systemHealthPage() {
         async runScheduler() {
             this.runningScheduler = true;
             try {
-                const res = await apiCall('/api/warmup/system-health/trigger-scheduler', { method: 'POST' });
+                const res = await apiCall('/api/warmup/system-health/trigger-scheduler', 'POST');
                 showToast(res.message || 'Scheduler completed', res.success ? 'success' : 'error');
                 await Promise.all([this.load(), this.loadReadiness()]);
             } catch(e) {
