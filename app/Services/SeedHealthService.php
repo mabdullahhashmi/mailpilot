@@ -20,7 +20,7 @@ class SeedHealthService
         $score = 100;
 
         // Penalize high failure rate
-        $totalInteractions = max(1, $seed->total_interactions);
+        $totalInteractions = max(1, ($seed->total_replies_sent ?? 0) + ($seed->total_opens ?? 0) + ($seed->failed_interactions ?? 0));
         $failureRate = $seed->failed_interactions / $totalInteractions;
         $score -= min(40, (int)($failureRate * 100));
 

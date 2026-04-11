@@ -45,7 +45,7 @@
                                 :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
                                 x-text="s.status"></span>
                         </td>
-                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.daily_interaction_cap ?? 5"></td>
+                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.daily_total_interaction_cap ?? s.daily_interaction_cap ?? 20"></td>
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.total_interactions ?? 0"></td>
                         <td class="px-5 py-4 text-right">
                             <div class="flex items-center justify-end gap-1">
@@ -295,6 +295,7 @@ function seedsPage() {
             try {
                 const data = { ...this.form };
                 if (this.editMode && !data.smtp_password) delete data.smtp_password;
+                if (this.editMode && !data.imap_password) delete data.imap_password;
                 if (this.editMode) { await apiCall(`/api/warmup/seed-mailboxes/${this.editId}`, 'PUT', data); showToast('Seed updated'); }
                 else { await apiCall('/api/warmup/seed-mailboxes', 'POST', data); showToast('Seed added'); }
                 this.showModal = false; await this.load();

@@ -89,10 +89,13 @@ class SeedAllocationService
 
     private function hasNotExceededDailyCap(SeedMailbox $seed): bool
     {
-        $dailyCap = $seed->daily_interaction_cap ?? 5;
+        $dailyCap = $seed->daily_total_interaction_cap ?? 20;
 
         $todayCount = SeedUsageLog::where('seed_mailbox_id', $seed->id)
-            ->where('used_date', today())
+            ->where(function ($q) {
+                $q->where('used_date', today())
+                  ->orWhere('log_date', today());
+            })
             ->count();
 
         return $todayCount < $dailyCap;

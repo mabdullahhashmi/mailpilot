@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class BlacklistController extends Controller
 {
     /**
      * Check domains/IPs against major DNS blacklists.
      */
-    public function check(string $target): JsonResponse
+    public function check(Request $request): JsonResponse
     {
+        $target = $request->input('target', '');
+
         $blacklists = [
             'zen.spamhaus.org',
             'b.barracudacentral.org',

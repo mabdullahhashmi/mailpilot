@@ -13,6 +13,21 @@ class MailboxService
         $domain = $this->resolveOrCreateDomain($data['email_address']);
         $data['domain_id'] = $domain->id;
 
+        // Map frontend field names to model columns
+        if (isset($data['warmup_target_daily'])) {
+            $data['daily_send_cap'] = $data['warmup_target_daily'];
+            unset($data['warmup_target_daily']);
+        }
+        if (isset($data['daily_sending_cap'])) {
+            $data['daily_send_cap'] = $data['daily_sending_cap'];
+            unset($data['daily_sending_cap']);
+        }
+        // Map provider to provider_type
+        if (isset($data['provider'])) {
+            $data['provider_type'] = $this->mapProviderType($data['provider']);
+            unset($data['provider']);
+        }
+
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
         }
@@ -25,6 +40,20 @@ class MailboxService
 
     public function update(SenderMailbox $mailbox, array $data): SenderMailbox
     {
+        // Map frontend field names to model columns
+        if (isset($data['warmup_target_daily'])) {
+            $data['daily_send_cap'] = $data['warmup_target_daily'];
+            unset($data['warmup_target_daily']);
+        }
+        if (isset($data['daily_sending_cap'])) {
+            $data['daily_send_cap'] = $data['daily_sending_cap'];
+            unset($data['daily_sending_cap']);
+        }
+        if (isset($data['provider'])) {
+            $data['provider_type'] = $this->mapProviderType($data['provider']);
+            unset($data['provider']);
+        }
+
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
         }
@@ -150,5 +179,15 @@ class MailboxService
                 'daily_growth_cap' => 5,
             ]
         );
+    }
+
+    private function mapProviderType(string $provider): string
+    {
+        return match ($provider) {
+            'google' => 'gmail',
+            'microsoft' => 'outlook',
+            'yahoo' => 'yahoo',
+            default => 'custom_smtp',
+        };
     }
 }

@@ -32,24 +32,24 @@ class ReadinessScoringService
             return 'not_ready';
         }
 
-        // Warming phase
-        if ($stage === 'ramp_up' || $dayNumber <= 7) {
+        // Warming phase (initial_trust / controlled_expansion early)
+        if ($stage === 'initial_trust' || $dayNumber <= 7) {
             if ($avgHealth >= 60) {
                 return 'warming';
             }
             return 'not_ready';
         }
 
-        // Mid warmup
-        if ($stage === 'building' || ($dayNumber > 7 && $dayNumber <= 14)) {
+        // Mid warmup (controlled_expansion / behavioral_maturity)
+        if ($stage === 'controlled_expansion' || $stage === 'behavioral_maturity' || ($dayNumber > 7 && $dayNumber <= 14)) {
             if ($avgHealth >= 70) {
                 return 'nearly_ready';
             }
             return 'warming';
         }
 
-        // Late warmup or stabilizing
-        if ($stage === 'stabilizing' || $dayNumber > 14) {
+        // Late warmup (readiness stage)
+        if ($stage === 'readiness' || $dayNumber > 14) {
             if ($avgHealth >= 80) {
                 return 'ready';
             }

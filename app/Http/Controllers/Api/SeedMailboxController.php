@@ -30,6 +30,7 @@ class SeedMailboxController extends Controller
             'imap_port' => 'nullable|integer',
             'imap_username' => 'nullable|string',
             'imap_password' => 'nullable|string',
+            'imap_encryption' => 'nullable|in:tls,ssl,none',
             'provider' => 'nullable|string',
             'daily_interaction_cap' => 'nullable|integer|min:1',
         ]);
@@ -56,6 +57,7 @@ class SeedMailboxController extends Controller
             'imap_port' => 'nullable|integer',
             'imap_username' => 'nullable|string',
             'imap_password' => 'nullable|string',
+            'imap_encryption' => 'nullable|in:tls,ssl,none',
             'provider' => 'nullable|string',
             'daily_interaction_cap' => 'nullable|integer|min:1',
         ]);

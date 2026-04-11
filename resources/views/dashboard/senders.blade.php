@@ -49,7 +49,7 @@
                                   :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : s.status === 'paused' ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-500/15 text-zinc-400'"
                                   x-text="s.status"></span>
                         </td>
-                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.warmup_target_daily ?? '—'"></td>
+                        <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.daily_send_cap ?? s.warmup_target_daily ?? '—'"></td>
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.domain?.domain_name ?? '—'"></td>
                         <td class="px-5 py-4 text-right">
                             <div class="flex items-center justify-end gap-1">
@@ -326,6 +326,7 @@ function sendersPage() {
             try {
                 const data = { ...this.form };
                 if (this.editMode && !data.smtp_password) delete data.smtp_password;
+                if (this.editMode && !data.imap_password) delete data.imap_password;
                 if (this.editMode) {
                     await apiCall(`/api/warmup/sender-mailboxes/${this.editId}`, 'PUT', data);
                     showToast('Sender updated');

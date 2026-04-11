@@ -365,16 +365,14 @@ function diagnosticsPage() {
 
         async fixStuck() {
             try {
-                const r = await fetch('/api/warmup/diagnostics/fix-stuck', { method: 'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content} });
-                const d = await r.json();
+                const d = await apiCall('/api/warmup/diagnostics/fix-stuck', 'POST');
                 this.showToast(d.message, 'success');
             } catch (e) { this.showToast('Fix failed: ' + e.message, 'error'); }
         },
 
         async runSeedCheck() {
             try {
-                const r = await fetch('/api/warmup/diagnostics/seed-health/check', { method: 'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content} });
-                const d = await r.json();
+                const d = await apiCall('/api/warmup/diagnostics/seed-health/check', 'POST');
                 this.showToast(`Checked ${d.checked} seeds, ${d.disabled} disabled, ${d.warnings} warnings`, d.disabled > 0 ? 'warning' : 'success');
                 await this.loadSeedReport();
             } catch (e) { this.showToast('Check failed: ' + e.message, 'error'); }
@@ -382,15 +380,13 @@ function diagnosticsPage() {
 
         async loadSeedReport() {
             try {
-                const r = await fetch('/api/warmup/diagnostics/seed-health');
-                if (r.ok) this.seedReport = await r.json();
+                this.seedReport = await apiCall('/api/warmup/diagnostics/seed-health');
             } catch {}
         },
 
         async reEnableSeed(id) {
             try {
-                const r = await fetch(`/api/warmup/diagnostics/seed-health/${id}/re-enable`, { method: 'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content} });
-                const d = await r.json();
+                const d = await apiCall(`/api/warmup/diagnostics/seed-health/${id}/re-enable`, 'POST');
                 this.showToast(d.message, 'success');
                 await this.loadSeedReport();
             } catch (e) { this.showToast('Re-enable failed', 'error'); }

@@ -639,7 +639,9 @@
         </div>
     </div>
 </div>
+@endsection
 
+@push('scripts')
 <script>
 function deliverabilityPage() {
     return {
@@ -808,41 +810,59 @@ function deliverabilityPage() {
             try {
                 const res = await fetch('/api/warmup/deliverability/reputation/domain/' + domainId);
                 const data = await res.json();
-                this.dnsAuditLog = data.dns_audit || [];
-                this.$nextTick(() => lucide.createIcons());
+                console.log('Domain detail:', data);
             } catch (e) {
-                console.error('Failed to load domain detail:', e);
-            }
-        },
-
-        async suppressEmail(email) {
-            try {
-                await fetch('/api/warmup/deliverability/bounces/suppress', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content,
-                    },
-                    body: JSON.stringify({ email }),
-                });
-                await this.loadOverview();
-                await this.loadBounceData();
-            } catch (e) {
-                console.error('Suppress failed:', e);
+                console.error('Domain detail failed:', e);
             }
         },
 
         updateBadges() {
-            const bounces = this.overview?.bounces?.total || 0;
-            const critical = (this.overview?.reputation?.domains?.critical || 0) + (this.overview?.reputation?.senders?.critical || 0);
+            if (!this.overview) return;
+            // Placement badge
+            const placementBad = (this.overview.placement_tests || []).filter(t => t.inbox_rate < 70).length;
+            this.tabs[0].badge = placementBad > 0 ? placementBad : null;
+            this.tabs[0].badgeColor = placementBad > 0 ? 'bg-red-500' : '';
 
-            this.tabs[1].badge = bounces > 0 ? bounces : null;
-            this.tabs[1].badgeColor = bounces > 5 ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400';
-            this.tabs[2].badge = critical > 0 ? critical : null;
-            this.tabs[2].badgeColor = 'bg-red-500/20 text-red-400';
-        }
+            // Bounce badge
+            const bounceCount = this.overview.total_bounces || this.bounceData?.total_bounces || 0;
+            this.tabs[1].badge = bounceCount > 0 ? bounceCount : null;
+            this.tabs[1].badgeColor = bounceCount > 0 ? 'bg-amber-500' : '';
+
+            // Reputation badge
+            const reputationIssues = this.domainReputations.filter(d => d.reputation_score < 60).length;
+            this.tabs[2].badge = reputationIssues > 0 ? reputationIssues : null;
+            this.tabs[2].badgeColor = reputationIssues > 0 ? 'bg-orange-500' : '';
+
+            // Strategy badge
+            const pending = (this.overview.strategy_recommendations || []).filter(s => s.recommendation !== 'maintain').length;
+            this.tabs[3].badge = pending > 0 ? pending : null;
+            this.tabs[3].badgeColor = pending > 0 ? 'bg-blue-500' : '';
+        },
+
+        statusColor(status) {
+            if (!status) return 'text-zinc-500';
+            const s = status.toLowerCase();
+            if (s === 'pass' || s === 'inbox' || s === 'good') return 'text-emerald-400';
+            if (s === 'warn' || s === 'spam' || s === 'warning') return 'text-amber-400';
+            if (s === 'fail' || s === 'missing' || s === 'bad') return 'text-red-400';
+            return 'text-zinc-400';
+        },
+
+        scoreColor(score) {
+            if (score >= 80) return 'text-emerald-400';
+            if (score >= 60) return 'text-amber-400';
+            return 'text-red-400';
+        },
+
+        timeAgo(dt) {
+            if (!dt) return 'Never';
+            const diff = (Date.now() - new Date(dt).getTime()) / 1000;
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return Math.floor(diff / 86400) + 'd ago';
+        },
     };
 }
 </script>
-
-@endsection
+@endpush

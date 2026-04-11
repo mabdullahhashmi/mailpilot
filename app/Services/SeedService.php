@@ -9,6 +9,16 @@ class SeedService
 {
     public function create(array $data): SeedMailbox
     {
+        // Map frontend field names to model columns
+        if (isset($data['daily_interaction_cap'])) {
+            $data['daily_total_interaction_cap'] = $data['daily_interaction_cap'];
+            unset($data['daily_interaction_cap']);
+        }
+        if (isset($data['provider'])) {
+            $data['provider_type'] = $this->mapProviderType($data['provider']);
+            unset($data['provider']);
+        }
+
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
         }
@@ -21,6 +31,15 @@ class SeedService
 
     public function update(SeedMailbox $seed, array $data): SeedMailbox
     {
+        if (isset($data['daily_interaction_cap'])) {
+            $data['daily_total_interaction_cap'] = $data['daily_interaction_cap'];
+            unset($data['daily_interaction_cap']);
+        }
+        if (isset($data['provider'])) {
+            $data['provider_type'] = $this->mapProviderType($data['provider']);
+            unset($data['provider']);
+        }
+
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
         }
@@ -77,5 +96,15 @@ class SeedService
     public function getDecryptedImapPassword(SeedMailbox $seed): string
     {
         return Crypt::decryptString($seed->imap_password);
+    }
+
+    private function mapProviderType(string $provider): string
+    {
+        return match ($provider) {
+            'google' => 'gmail',
+            'microsoft' => 'outlook',
+            'yahoo' => 'yahoo',
+            default => 'custom_smtp',
+        };
     }
 }

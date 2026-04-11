@@ -42,7 +42,7 @@ class HealthService
      */
     public function recordSeedInteraction(SeedMailbox $seed, Domain $domain): void
     {
-        $seed->increment('total_interactions');
+        $seed->increment('total_opens');
     }
 
     /**

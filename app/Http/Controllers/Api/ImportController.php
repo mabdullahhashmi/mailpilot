@@ -93,22 +93,46 @@ class ImportController extends Controller
                 'smtp_host' => trim($record['smtp_host']),
                 'smtp_port' => (int) trim($record['smtp_port']),
                 'smtp_username' => trim($record['smtp_username']),
-                'smtp_password' => trim($record['smtp_password']),
+                'smtp_password' => \Illuminate\Support\Facades\Crypt::encryptString(trim($record['smtp_password'])),
                 'smtp_encryption' => trim($record['smtp_encryption'] ?? 'tls'),
-                'provider' => trim($record['provider'] ?? ''),
                 'status' => 'active',
             ];
+
+            // Map provider to provider_type enum
+            $providerRaw = trim($record['provider'] ?? '');
+            if ($providerRaw) {
+                $fields['provider_type'] = match ($providerRaw) {
+                    'google' => 'gmail',
+                    'microsoft' => 'outlook',
+                    'yahoo' => 'yahoo',
+                    default => 'custom_smtp',
+                };
+            }
 
             if ($type === 'seed') {
                 $fields['imap_host'] = trim($record['imap_host']);
                 $fields['imap_port'] = (int) trim($record['imap_port']);
                 $fields['imap_username'] = trim($record['imap_username']);
-                $fields['imap_password'] = trim($record['imap_password']);
+                $fields['imap_password'] = \Illuminate\Support\Facades\Crypt::encryptString(trim($record['imap_password']));
                 $fields['imap_encryption'] = trim($record['imap_encryption'] ?? 'ssl');
             }
 
             if (isset($record['warmup_target_daily'])) {
-                $fields['warmup_target_daily'] = (int) trim($record['warmup_target_daily']);
+                if ($type === 'seed') {
+                    $fields['daily_total_interaction_cap'] = (int) trim($record['warmup_target_daily']);
+                } else {
+                    $fields['daily_send_cap'] = (int) trim($record['warmup_target_daily']);
+                }
+            }
+
+            // For senders, auto-resolve domain
+            if ($type === 'sender') {
+                $domainName = substr($email, strpos($email, '@') + 1);
+                $domain = \App\Models\Domain::firstOrCreate(
+                    ['domain_name' => $domainName],
+                    ['status' => 'active', 'daily_domain_cap' => 50, 'daily_growth_cap' => 5]
+                );
+                $fields['domain_id'] = $domain->id;
             }
 
             try {

@@ -20,8 +20,8 @@ class SafetyService
     public function applySenderCap(SenderMailbox $sender, int $requested, string $actionType): int
     {
         $cap = $actionType === 'send'
-            ? $sender->warmup_target_daily
-            : ($sender->warmup_target_daily * 2); // replies can be double sends
+            ? ($sender->daily_send_cap ?: 5)
+            : (($sender->daily_send_cap ?: 5) * 2); // replies can be double sends
 
         $used = WarmupEvent::where('actor_mailbox_id', $sender->id)
             ->where('actor_type', 'sender')
