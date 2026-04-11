@@ -87,10 +87,14 @@ class SenderMailboxController extends Controller
         return response()->json(['message' => 'Deleted']);
     }
 
-    public function testSmtp(int $id): JsonResponse
+    public function testSmtp(Request $request, int $id): JsonResponse
     {
+        $validated = $request->validate([
+            'test_email' => 'nullable|email',
+        ]);
+
         $mailbox = \App\Models\SenderMailbox::findOrFail($id);
-        $result = $this->service->testSmtp($mailbox);
+        $result = $this->service->testSmtp($mailbox, $validated['test_email'] ?? null);
         return response()->json($result);
     }
 

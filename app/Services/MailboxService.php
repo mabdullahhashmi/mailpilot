@@ -95,7 +95,7 @@ class MailboxService
         ]);
     }
 
-    public function testSmtp(SenderMailbox $mailbox): array
+    public function testSmtp(SenderMailbox $mailbox, ?string $testEmail = null): array
     {
         try {
             $password = Crypt::decryptString($mailbox->smtp_password);
@@ -108,6 +108,19 @@ class MailboxService
             $transport->setUsername($mailbox->smtp_username);
             $transport->setPassword($password);
             $transport->start();
+
+            if ($testEmail) {
+                $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+                $email = (new \Symfony\Component\Mime\Email())
+                    ->from($mailbox->email_address)
+                    ->to($testEmail)
+                    ->subject('MailPilot SMTP Test - ' . now()->format('Y-m-d H:i:s'))
+                    ->text("This is a MailPilot SMTP test message.\n\nSender: {$mailbox->email_address}\nSMTP Host: {$mailbox->smtp_host}\nTime: " . now()->toDateTimeString())
+                    ->html('<p>This is a <strong>MailPilot SMTP test message</strong>.</p><p>Sender: ' . e($mailbox->email_address) . '<br>SMTP Host: ' . e($mailbox->smtp_host) . '<br>Time: ' . e(now()->toDateTimeString()) . '</p>');
+
+                $mailer->send($email);
+            }
+
             $transport->stop();
 
             $mailbox->update([
@@ -115,7 +128,14 @@ class MailboxService
                 'last_smtp_test_result' => 'pass',
             ]);
 
-            return ['success' => true, 'message' => 'SMTP connection successful'];
+            return [
+                'success' => true,
+                'test_email_sent' => (bool) $testEmail,
+                'test_email' => $testEmail,
+                'message' => $testEmail
+                    ? "SMTP connected and test email sent to {$testEmail}"
+                    : 'SMTP connection successful',
+            ];
         } catch (\Throwable $e) {
             $mailbox->update([
                 'last_smtp_test_at' => now(),

@@ -53,7 +53,7 @@
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.domain?.domain_name ?? '—'"></td>
                         <td class="px-5 py-4 text-right">
                             <div class="flex items-center justify-end gap-1">
-                                <button @click="testSmtp(s.id)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="Test SMTP">
+                                <button @click="testSmtp(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="Test SMTP">
                                     <i data-lucide="plug" class="w-4 h-4"></i>
                                 </button>
                                 <button @click="togglePause(s)" class="btn-ghost p-2 rounded-lg text-zinc-500" :class="s.status === 'active' ? 'hover:text-amber-400' : 'hover:text-emerald-400'" :title="s.status === 'active' ? 'Pause' : 'Resume'">
@@ -349,10 +349,19 @@ function sendersPage() {
             } catch(e) { showToast('Error: ' + e.message, 'error'); }
         },
 
-        async testSmtp(id) {
-            showToast('Testing SMTP connection...', 'info');
+        async testSmtp(sender) {
+            const target = prompt(
+                'Enter recipient email for test message.\nLeave empty to only test SMTP connection.',
+                sender?.email_address || ''
+            );
+            if (target === null) return;
+
+            const email = (target || '').trim();
+            const payload = email ? { test_email: email } : null;
+
+            showToast(email ? 'Testing SMTP and sending test email...' : 'Testing SMTP connection...', 'info');
             try {
-                const res = await apiCall(`/api/warmup/sender-mailboxes/${id}/test-smtp`, 'POST');
+                const res = await apiCall(`/api/warmup/sender-mailboxes/${sender.id}/test-smtp`, 'POST', payload);
                 const msg = res.message || (res.success ? 'SMTP connected!' : 'SMTP test failed');
                 showToast(msg, res.success ? 'success' : 'error');
                 await this.load();
