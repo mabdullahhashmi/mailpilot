@@ -105,19 +105,28 @@ class DailyPlannerService
     /**
      * Run daily planner for all active campaigns.
      */
-    public function planAllCampaigns(): array
+    public function planAllCampaigns(bool $force = false): array
     {
         $campaigns = $this->campaignService->getActiveCampaigns();
         $runs = [];
 
         foreach ($campaigns as $campaign) {
-            // Skip if already planned today
-            $alreadyPlanned = PlannerRun::where('warmup_campaign_id', $campaign->id)
-                ->where('plan_date', today())
-                ->exists();
+            // Skip if already planned today (unless forced)
+            if (!$force) {
+                $alreadyPlanned = PlannerRun::where('warmup_campaign_id', $campaign->id)
+                    ->where('plan_date', today())
+                    ->exists();
 
-            if ($alreadyPlanned) {
-                continue;
+                if ($alreadyPlanned) {
+                    Log::info("DailyPlanner: Skipping campaign #{$campaign->id} — already planned today. Use force=true to override.");
+                    continue;
+                }
+            } else {
+                // Force: delete today's existing plan runs so we can re-plan fresh
+                PlannerRun::where('warmup_campaign_id', $campaign->id)
+                    ->where('plan_date', today())
+                    ->delete();
+                Log::info("DailyPlanner: Force re-planning campaign #{$campaign->id}");
             }
 
             try {

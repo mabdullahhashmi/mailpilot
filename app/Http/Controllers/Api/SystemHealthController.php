@@ -121,10 +121,11 @@ class SystemHealthController extends Controller
     /**
      * Manually trigger the daily planner (creates threads + events for active campaigns).
      */
-    public function triggerPlanner(DailyPlannerService $planner): JsonResponse
+    public function triggerPlanner(Request $request, DailyPlannerService $planner): JsonResponse
     {
+        $force = (bool) $request->input('force', false);
         try {
-            $runs = $planner->planAllCampaigns();
+            $runs = $planner->planAllCampaigns($force);
             $results = [];
             foreach ($runs as $run) {
                 $results[] = [
@@ -135,10 +136,14 @@ class SystemHealthController extends Controller
                 ];
             }
             SystemSetting::set('last_planner_run', now()->toDateTimeString(), 'cron');
+            $skipped = $force ? 0 : null;
             return response()->json([
                 'success' => true,
-                'message' => 'Daily planner executed. Planned ' . count($runs) . ' campaign(s).',
+                'message' => count($runs) > 0
+                    ? 'Daily planner executed. Planned ' . count($runs) . ' campaign(s).'
+                    : 'No campaigns planned. All may already be planned for today — use Force Re-Plan to override.',
                 'runs' => $results,
+                'already_planned_today' => count($runs) === 0 && !$force,
             ]);
         } catch (\Throwable $e) {
             Log::error('Manual planner trigger failed: ' . $e->getMessage(), ['exception' => $e]);

@@ -44,15 +44,19 @@
 
         <!-- Manual Trigger Buttons -->
         <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-white/5">
-            <button @click="runPlanner()" :disabled="runningPlanner" class="btn-primary px-4 py-2.5 rounded-xl text-xs text-white font-medium flex items-center gap-2">
+            <button @click="runPlanner(false)" :disabled="runningPlanner" class="btn-primary px-4 py-2.5 rounded-xl text-xs text-white font-medium flex items-center gap-2">
                 <span :class="runningPlanner && 'animate-spin'" class="inline-flex"><i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i></span>
                 <span x-text="runningPlanner ? 'Planning...' : 'Run Daily Planner'"></span>
+            </button>
+            <button @click="runPlanner(true)" :disabled="runningPlanner" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition">
+                <span :class="runningPlanner && 'animate-spin'" class="inline-flex"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></span>
+                <span x-text="runningPlanner ? 'Re-Planning...' : 'Force Re-Plan Today'"></span>
             </button>
             <button @click="runScheduler()" :disabled="runningScheduler" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition">
                 <span :class="runningScheduler && 'animate-spin'" class="inline-flex"><i data-lucide="play" class="w-3.5 h-3.5"></i></span>
                 <span x-text="runningScheduler ? 'Processing...' : 'Process Due Events'"></span>
             </button>
-            <span class="text-zinc-600 text-[10px] leading-tight max-w-xs">Planner creates threads & events for active campaigns. Scheduler executes due events (sends emails).</span>
+            <span class="text-zinc-600 text-[10px] leading-tight max-w-xs">Planner creates threads & events. Force Re-Plan discards today's plan and rebuilds it. Scheduler executes due events (sends emails).</span>
         </div>
     </div>
 
@@ -289,10 +293,10 @@ function systemHealthPage() {
             this.$nextTick(() => lucide.createIcons());
         },
 
-        async runPlanner() {
+        async runPlanner(force = false) {
             this.runningPlanner = true;
             try {
-                const res = await apiCall('/api/warmup/system-health/trigger-planner', 'POST');
+                const res = await apiCall('/api/warmup/system-health/trigger-planner', 'POST', { force: force ? 1 : 0 });
                 showToast(res.message || 'Planner completed', res.success ? 'success' : 'error');
                 await Promise.all([this.load(), this.loadReadiness()]);
             } catch(e) {
