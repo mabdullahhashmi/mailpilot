@@ -348,7 +348,7 @@ class BounceIntelligenceService
     {
         $log = MailboxHealthLog::firstOrCreate(
             ['sender_mailbox_id' => $sender->id, 'log_date' => today()],
-            ['health_score' => 50, 'sends_today' => 0, 'replies_today' => 0, 'bounces_today' => 0]
+            ['warmup_day' => $sender->current_day_number ?? 1, 'health_score' => 50, 'sends_today' => 0, 'replies_today' => 0, 'bounces_today' => 0]
         );
 
         if ($bounceType === 'hard') {

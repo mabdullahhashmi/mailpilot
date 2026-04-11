@@ -102,6 +102,7 @@ class HealthService
                 'log_date' => today(),
             ],
             [
+                'warmup_day' => $sender->current_day_number ?? 1,
                 'health_score' => 50,
                 'sends_today' => 0,
                 'replies_today' => 0,
