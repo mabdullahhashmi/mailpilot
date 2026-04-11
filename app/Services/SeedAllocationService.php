@@ -77,7 +77,7 @@ class SeedAllocationService
         foreach ($selected as $seed) {
             $log = SeedUsageLog::updateOrCreate(
                 ['seed_mailbox_id' => $seed->id, 'log_date' => today()],
-                ['used_date' => today()]
+                []
             );
 
             $log->increment('interactions_today');
