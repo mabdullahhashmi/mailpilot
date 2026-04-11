@@ -24,7 +24,7 @@ class SenderMailboxController extends Controller
     {
         $validated = $request->validate([
             'email_address' => 'required|email|unique:sender_mailboxes,email_address',
-            'smtp_host' => 'required|string',
+            'smtp_host' => ['required', 'string', 'max:255', 'not_regex:/@/'],
             'smtp_port' => 'required|integer',
             'smtp_username' => 'required|string',
             'smtp_password' => 'required|string',
@@ -40,6 +40,8 @@ class SenderMailboxController extends Controller
             'working_hours_start' => 'nullable|string',
             'working_hours_end' => 'nullable|string',
             'timezone' => 'nullable|string',
+        ], [
+            'smtp_host.not_regex' => 'SMTP host must be a server host (e.g. smtp.gmail.com), not an email address.',
         ]);
 
         $mailbox = $this->service->create($validated);
@@ -57,7 +59,7 @@ class SenderMailboxController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'smtp_host' => 'sometimes|string',
+            'smtp_host' => ['sometimes', 'string', 'max:255', 'not_regex:/@/'],
             'smtp_port' => 'sometimes|integer',
             'smtp_username' => 'sometimes|string',
             'smtp_password' => 'sometimes|string',
@@ -73,6 +75,8 @@ class SenderMailboxController extends Controller
             'working_hours_start' => 'nullable|string',
             'working_hours_end' => 'nullable|string',
             'timezone' => 'nullable|string',
+        ], [
+            'smtp_host.not_regex' => 'SMTP host must be a server host (e.g. smtp.gmail.com), not an email address.',
         ]);
 
         $mailbox = \App\Models\SenderMailbox::findOrFail($id);

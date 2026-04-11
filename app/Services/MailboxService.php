@@ -98,6 +98,18 @@ class MailboxService
     public function testSmtp(SenderMailbox $mailbox, ?string $testEmail = null): array
     {
         try {
+            if (!$mailbox->smtp_host || str_contains($mailbox->smtp_host, '@')) {
+                $mailbox->update([
+                    'last_smtp_test_at' => now(),
+                    'last_smtp_test_result' => 'fail',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Invalid SMTP host. Use server host like smtp.gmail.com or smtp.office365.com (not an email address).',
+                ];
+            }
+
             $password = Crypt::decryptString($mailbox->smtp_password);
 
             $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
