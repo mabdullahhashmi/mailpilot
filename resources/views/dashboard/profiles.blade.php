@@ -24,7 +24,7 @@
                         </div>
                         <div>
                             <p class="text-white font-semibold text-sm" x-text="p.profile_name"></p>
-                            <p class="text-zinc-500 text-xs" x-text="p.total_days + '-day warmup'"></p>
+                            <p class="text-zinc-500 text-xs" x-text="getTotalDays(p) + '-day warmup'"></p>
                         </div>
                     </div>
                     <div class="flex gap-1">
@@ -53,15 +53,15 @@
 
                 <div class="grid grid-cols-3 gap-2">
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
-                        <p class="text-sm font-bold text-white" x-text="p.total_days"></p>
+                        <p class="text-sm font-bold text-white" x-text="getTotalDays(p)"></p>
                         <p class="text-[10px] text-zinc-500 uppercase">Days</p>
                     </div>
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
-                        <p class="text-sm font-bold text-white" x-text="(p.daily_rules?.length || 0)"></p>
+                        <p class="text-sm font-bold text-white" x-text="Object.keys(p.day_rules || {}).length"></p>
                         <p class="text-[10px] text-zinc-500 uppercase">Rules</p>
                     </div>
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
-                        <p class="text-sm font-bold text-white" x-text="(p.warmup_campaigns?.length || 0)"></p>
+                        <p class="text-sm font-bold text-white" x-text="p.campaigns_count || 0"></p>
                         <p class="text-[10px] text-zinc-500 uppercase">Campaigns</p>
                     </div>
                 </div>
@@ -97,18 +97,18 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="r in detailProfile?.daily_rules || []" :key="r.day_number">
+                        <template x-for="([day, r]) in Object.entries(detailProfile?.day_rules || {})" :key="day">
                             <tr class="border-b border-white/[0.03]">
-                                <td class="px-3 py-2 font-medium text-white" x-text="'Day ' + r.day_number"></td>
+                                <td class="px-3 py-2 font-medium text-white" x-text="'Day ' + day"></td>
                                 <td class="px-3 py-2">
                                     <span class="badge px-2 py-0.5 rounded-full text-[10px]"
                                           :class="r.stage === 'ramp_up' ? 'bg-brand-500/15 text-brand-400' : r.stage === 'plateau' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
                                           x-text="r.stage?.replace('_',' ')"></span>
                                 </td>
-                                <td class="px-3 py-2 text-zinc-400" x-text="r.new_threads_count"></td>
-                                <td class="px-3 py-2 text-zinc-400" x-text="r.reply_count"></td>
+                                <td class="px-3 py-2 text-zinc-400" x-text="r.max_new_threads"></td>
+                                <td class="px-3 py-2 text-zinc-400" x-text="r.max_replies"></td>
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.expected_opens"></td>
-                                <td class="px-3 py-2 text-zinc-400" x-text="r.reply_chance_percent + '%'"></td>
+                                <td class="px-3 py-2 text-zinc-400" x-text="(r.reply_chance_percent ?? 0) + '%'"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -308,14 +308,15 @@ function profilesPage() {
         editProfile(p) {
             this.editMode = true;
             this.editId = p.id;
-            this.form = { profile_name: p.profile_name, total_days: p.total_days || 14 };
+            const totalDays = this.getTotalDays(p);
+            this.form = { profile_name: p.profile_name, total_days: totalDays };
             // Populate from day_rules JSON
             const dr = p.day_rules || {};
             this.dayRules = [];
-            for (let d = 1; d <= (p.total_days || 14); d++) {
+            for (let d = 1; d <= totalDays; d++) {
                 const rule = dr[d] || {};
                 this.dayRules.push({
-                    stage: rule.stage || (d <= Math.ceil(p.total_days * 0.4) ? 'ramp_up' : d <= Math.ceil(p.total_days * 0.75) ? 'plateau' : 'maintenance'),
+                    stage: rule.stage || (d <= Math.ceil(totalDays * 0.4) ? 'ramp_up' : d <= Math.ceil(totalDays * 0.75) ? 'plateau' : 'maintenance'),
                     new_threads: rule.max_new_threads ?? 3,
                     replies: rule.max_replies ?? 2,
                     max_total: rule.max_total ?? 5,
@@ -326,7 +327,17 @@ function profilesPage() {
             this.showModal = true;
         },
 
-        getStagePercent(p, stage) { const days = this.getStageDays(p, stage); return p.total_days ? Math.round((days / p.total_days) * 100) : 0; },
+        getTotalDays(p) {
+            const dr = p?.day_rules || {};
+            const dayCount = Object.keys(dr).length;
+            return dayCount || p?.total_days || 14;
+        },
+
+        getStagePercent(p, stage) {
+            const days = this.getStageDays(p, stage);
+            const totalDays = this.getTotalDays(p);
+            return totalDays ? Math.round((days / totalDays) * 100) : 0;
+        },
         getStageDays(p, stage) {
             const dr = p.day_rules || {};
             return Object.values(dr).filter(r => r.stage === stage).length;

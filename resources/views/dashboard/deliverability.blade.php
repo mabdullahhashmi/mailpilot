@@ -590,8 +590,8 @@
             </select>
             <div class="flex gap-3 justify-end">
                 <button @click="showPlacementModal = false" class="px-4 py-2 rounded-xl text-sm text-zinc-400 hover:text-white transition">Cancel</button>
-                <button @click="runSinglePlacement(selectedPlacementSender); showPlacementModal = false" :disabled="!selectedPlacementSender" class="btn-primary px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50">
-                    Run Test
+                <button @click="runPlacementFromModal()" :disabled="!selectedPlacementSender || runningPlacement" class="btn-primary px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50">
+                    <span x-text="runningPlacement ? 'Running...' : 'Run Test'"></span>
                 </button>
             </div>
         </div>
@@ -653,6 +653,7 @@ function deliverabilityPage() {
         activeTab: 'placement',
         scanning: false,
         analyzing: false,
+        runningPlacement: false,
         lastScan: null,
         showPlacementModal: false,
         showAnalysis: false,
@@ -762,21 +763,33 @@ function deliverabilityPage() {
         async runSinglePlacement(senderId) {
             if (!senderId) return;
             try {
-                const res = await fetch('/api/warmup/deliverability/placement/test', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content,
-                    },
-                    body: JSON.stringify({ sender_mailbox_id: senderId }),
+                const data = await apiCall('/api/warmup/deliverability/placement/test', 'POST', {
+                    sender_mailbox_id: Number(senderId)
                 });
-                const data = await res.json();
-                if (data.test) {
+                if (data?.test) {
+                    showToast('Placement test started successfully', 'success');
                     await this.loadOverview();
+                    this.updateBadges();
                     this.$nextTick(() => lucide.createIcons());
+                } else {
+                    showToast('Placement test could not be started', 'warning');
                 }
             } catch (e) {
+                showToast('Placement test failed: ' + e.message, 'error');
                 console.error('Placement test failed:', e);
+            }
+        },
+
+        async runPlacementFromModal() {
+            if (!this.selectedPlacementSender) return;
+
+            this.runningPlacement = true;
+            try {
+                await this.runSinglePlacement(this.selectedPlacementSender);
+                this.showPlacementModal = false;
+                this.selectedPlacementSender = '';
+            } finally {
+                this.runningPlacement = false;
             }
         },
 
