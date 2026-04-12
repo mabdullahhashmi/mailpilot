@@ -102,8 +102,8 @@
                                 <td class="px-3 py-2 font-medium text-white" x-text="'Day ' + day"></td>
                                 <td class="px-3 py-2">
                                     <span class="badge px-2 py-0.5 rounded-full text-[10px]"
-                                          :class="r.stage === 'ramp_up' ? 'bg-brand-500/15 text-brand-400' : r.stage === 'plateau' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
-                                          x-text="r.stage?.replace('_',' ')"></span>
+                                          :class="getRuleStage(detailProfile, day, r) === 'ramp_up' ? 'bg-brand-500/15 text-brand-400' : getRuleStage(detailProfile, day, r) === 'plateau' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
+                                          x-text="getRuleStage(detailProfile, day, r).replace('_',' ')"></span>
                                 </td>
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.max_new_threads"></td>
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.max_replies"></td>
@@ -338,9 +338,29 @@ function profilesPage() {
             const totalDays = this.getTotalDays(p);
             return totalDays ? Math.round((days / totalDays) * 100) : 0;
         },
+        getFallbackStageByDay(dayNumber, totalDays) {
+            if (dayNumber <= Math.ceil(totalDays * 0.4)) return 'ramp_up';
+            if (dayNumber <= Math.ceil(totalDays * 0.75)) return 'plateau';
+            return 'maintenance';
+        },
+        getRuleStage(profile, day, rule) {
+            if (rule?.stage === 'ramp_up' || rule?.stage === 'plateau' || rule?.stage === 'maintenance') {
+                return rule.stage;
+            }
+
+            const totalDays = this.getTotalDays(profile);
+            const dayNumber = Number.parseInt(day, 10);
+            if (Number.isFinite(dayNumber) && dayNumber > 0) {
+                return this.getFallbackStageByDay(dayNumber, totalDays);
+            }
+
+            return 'maintenance';
+        },
         getStageDays(p, stage) {
             const dr = p.day_rules || {};
-            return Object.values(dr).filter(r => r.stage === stage).length;
+            return Object.entries(dr)
+                .filter(([day, rule]) => this.getRuleStage(p, day, rule) === stage)
+                .length;
         },
 
         viewProfile(p) { this.detailProfile = p; this.showDetail = true; this.$nextTick(() => lucide.createIcons()); },
