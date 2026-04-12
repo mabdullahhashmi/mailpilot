@@ -108,7 +108,7 @@
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.max_new_threads"></td>
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.max_replies"></td>
                                 <td class="px-3 py-2 text-zinc-400" x-text="r.expected_opens"></td>
-                                <td class="px-3 py-2 text-zinc-400" x-text="(r.reply_chance_percent ?? 0) + '%'"></td>
+                                <td class="px-3 py-2 text-zinc-400" x-text="getRuleReplyPercent(r) + '%'"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -355,6 +355,20 @@ function profilesPage() {
             }
 
             return 'maintenance';
+        },
+        getRuleReplyPercent(rule) {
+            const explicit = Number.parseFloat(rule?.reply_chance_percent);
+            if (Number.isFinite(explicit)) {
+                return Math.max(0, Math.min(100, Math.round(explicit)));
+            }
+
+            const maxReplies = Number.parseFloat(rule?.max_replies);
+            const maxTotal = Number.parseFloat(rule?.max_total);
+            if (Number.isFinite(maxReplies) && Number.isFinite(maxTotal) && maxTotal > 0) {
+                return Math.max(0, Math.min(100, Math.round((maxReplies / maxTotal) * 100)));
+            }
+
+            return 25;
         },
         getStageDays(p, stage) {
             const dr = p.day_rules || {};
