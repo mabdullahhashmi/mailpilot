@@ -85,4 +85,9 @@ class DashboardPageController extends Controller
     {
         return view('dashboard.diagnostics');
     }
+
+    public function campaignFlow()
+    {
+        return view('dashboard.campaign-flow');
+    }
 }

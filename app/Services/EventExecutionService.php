@@ -151,10 +151,7 @@ class EventExecutionService
         $sender = $thread->senderMailbox;
 
         // Sequence enforcement: seed must have "opened" (seed_open_email) before replying
-        $pendingOpen = WarmupEvent::where('thread_id', $thread->id)
-            ->where('event_type', 'seed_open_email')
-            ->where('status', 'pending')
-            ->exists();
+        $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'seed');
 
         if ($pendingOpen) {
             // Reschedule this reply to run after the open event — set status back to pending
@@ -226,6 +223,19 @@ class EventExecutionService
         $sender = $thread->senderMailbox;
         $seed = $thread->seedMailbox;
 
+        // Sequence enforcement: sender should open seed email before replying
+        $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'sender');
+
+        if ($pendingOpen) {
+            $event->update([
+                'status' => 'pending',
+                'scheduled_at' => now()->addMinutes(rand(5, 15)),
+                'lock_token' => null,
+                'lock_expires_at' => null,
+            ]);
+            return ['message' => "Sender reply deferred - sender open event pending for thread #{$thread->id}", 'schedule_next' => false];
+        }
+
         $this->safety->assertCanSend($sender, $thread->domain);
 
         $lastMessage = $thread->messages()->latest('message_step_number')->first();
@@ -271,16 +281,21 @@ class EventExecutionService
     private function executeSeedOpen(WarmupEvent $event): array
     {
         $thread = Thread::findOrFail($event->thread_id);
-        $seed = $thread->seedMailbox;
+        $openActor = $event->payload['open_actor'] ?? 'seed';
+        $isSenderOpen = $openActor === 'sender';
 
-        $imap = $this->connectImap($seed);
+        $actorMailbox = $isSenderOpen ? $thread->senderMailbox : $thread->seedMailbox;
+        $fromEmail = $isSenderOpen ? $thread->seedMailbox->email_address : $thread->senderMailbox->email_address;
+        $actorLabel = $isSenderOpen ? 'Sender' : 'Seed';
+
+        $imap = $this->connectImap($actorMailbox);
         if (!$imap) {
-            return ['message' => 'Seed open recorded (IMAP unavailable)', 'schedule_next' => false];
+            return ['message' => "{$actorLabel} open recorded (IMAP unavailable)", 'schedule_next' => false];
         }
 
         try {
             // Search for the message by subject in INBOX
-            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $thread->senderMailbox->email_address);
+            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $fromEmail);
 
             if ($messageUid) {
                 // Mark message as SEEN (this is what "open" means at IMAP level)
@@ -293,15 +308,17 @@ class EventExecutionService
 
             // Track open for health + sender health
             try {
-                $this->seedHealth->recordSuccess($seed, 'open');
-                $this->health->recordOpen($thread->senderMailbox);
+                if (!$isSenderOpen) {
+                    $this->seedHealth->recordSuccess($thread->seedMailbox, 'open');
+                    $this->health->recordOpen($thread->senderMailbox);
+                }
             } catch (\Throwable $he) {
                 Log::warning("Health tracking failed after open: {$he->getMessage()}");
             }
 
             return ['message' => $messageUid
-                ? "Seed opened message (UID: {$messageUid})"
-                : 'Seed open recorded (message not found in inbox)', 'schedule_next' => false];
+                ? "{$actorLabel} opened message (UID: {$messageUid})"
+                : "{$actorLabel} open recorded (message not found in inbox)", 'schedule_next' => false];
         } finally {
             imap_close($imap);
         }
@@ -465,23 +482,26 @@ class EventExecutionService
 
     private function maybeScheduleAuxiliaryEvents(Thread $thread, WarmupEvent $event, int $replyDelay): void
     {
-        // Before seed replies, schedule an "open" event
-        if ($thread->next_actor_type === 'seed') {
+        // Before replies, schedule an "open" event for the upcoming actor.
+        if (in_array($thread->next_actor_type, ['seed', 'sender'], true)) {
             $openDelay = max(1, intval($replyDelay * 0.3));
+            $openActor = $thread->next_actor_type;
+            $openActorId = $openActor === 'seed' ? $thread->seed_mailbox_id : $thread->sender_mailbox_id;
 
             WarmupEvent::create([
                 'event_type' => 'seed_open_email',
-                'actor_type' => 'seed',
-                'actor_mailbox_id' => $thread->seed_mailbox_id,
+                'actor_type' => $openActor,
+                'actor_mailbox_id' => $openActorId,
                 'thread_id' => $thread->id,
                 'warmup_campaign_id' => $event->warmup_campaign_id,
                 'scheduled_at' => now()->addMinutes($openDelay),
                 'status' => 'pending',
                 'priority' => 3,
+                'payload' => ['open_actor' => $openActor],
             ]);
 
             // 20% chance to mark important
-            if (rand(1, 100) <= 20) {
+            if ($thread->next_actor_type === 'seed' && rand(1, 100) <= 20) {
                 WarmupEvent::create([
                     'event_type' => 'seed_mark_important',
                     'actor_type' => 'seed',
@@ -494,6 +514,22 @@ class EventExecutionService
                 ]);
             }
         }
+    }
+
+    private function hasPendingOpenEvent(int $threadId, string $openActor): bool
+    {
+        return WarmupEvent::where('thread_id', $threadId)
+            ->where('event_type', 'seed_open_email')
+            ->where('status', 'pending')
+            ->where(function ($q) use ($openActor) {
+                if ($openActor === 'sender') {
+                    $q->where('payload->open_actor', 'sender');
+                } else {
+                    $q->whereNull('payload')
+                      ->orWhere('payload->open_actor', 'seed');
+                }
+            })
+            ->exists();
     }
 
     /**

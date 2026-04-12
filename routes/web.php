@@ -22,6 +22,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/logs', [DashboardPageController::class, 'logs'])->name('dashboard.logs');
     Route::get('/settings', [DashboardPageController::class, 'settings'])->name('dashboard.settings');
     Route::get('/templates', [DashboardPageController::class, 'templates'])->name('dashboard.templates');
+    Route::get('/campaign-flow', [DashboardPageController::class, 'campaignFlow'])->name('dashboard.campaign-flow');
     Route::get('/campaigns/{id}', [DashboardPageController::class, 'campaignDetail'])->name('dashboard.campaign-detail');
     Route::get('/sender-health', [DashboardPageController::class, 'senderHealth'])->name('dashboard.sender-health');
     Route::get('/dns-health', [DashboardPageController::class, 'dnsHealth'])->name('dashboard.dns-health');
@@ -67,6 +68,12 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('campaigns/{id}/restart', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'restart']);
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
     Route::get('campaigns/{id}/schedule', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'schedule']);
+
+    // Flow Test (isolated from daily warmup quota)
+    Route::get('flow-tests/meta', [\App\Http\Controllers\Api\FlowTestController::class, 'meta']);
+    Route::get('flow-tests', [\App\Http\Controllers\Api\FlowTestController::class, 'index']);
+    Route::get('flow-tests/{id}', [\App\Http\Controllers\Api\FlowTestController::class, 'show']);
+    Route::post('flow-tests/start', [\App\Http\Controllers\Api\FlowTestController::class, 'start']);
 
     // Settings
     Route::get('settings', [\App\Http\Controllers\Api\SettingsController::class, 'index']);
