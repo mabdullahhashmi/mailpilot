@@ -214,7 +214,8 @@ class EventExecutionService
         } catch (\Throwable $he) {
             Log::warning("Health tracking failed after reply: {$he->getMessage()}");
         }
-        $this->contentGuard->recordUsage($seed, $sender->email_address, $body);
+
+        // Content fingerprints are sender-scoped; skip logging for seed-authored replies.
 
         return ['message' => "Seed replied in thread #{$thread->id}", 'schedule_next' => true];
     }
