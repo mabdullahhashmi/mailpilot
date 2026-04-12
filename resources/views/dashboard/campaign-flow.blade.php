@@ -34,8 +34,8 @@
 
                 <div>
                     <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs text-zinc-400">Seeds (choose 2-3)</label>
-                        <span class="text-xs" :class="form.seed_ids.length >= 2 && form.seed_ids.length <= 3 ? 'text-emerald-400' : 'text-amber-400'" x-text="form.seed_ids.length + ' selected'"></span>
+                        <label class="block text-xs text-zinc-400">Seeds (choose 1-3)</label>
+                        <span class="text-xs" :class="form.seed_ids.length >= 1 && form.seed_ids.length <= 3 ? 'text-emerald-400' : 'text-amber-400'" x-text="form.seed_ids.length + ' selected'"></span>
                     </div>
                     <div class="max-h-44 overflow-y-auto space-y-2 pr-1">
                         <template x-for="seed in seeds" :key="seed.id">
@@ -221,8 +221,8 @@ function campaignFlowTest() {
                     this.form.sender_mailbox_id = this.senders[0].id;
                 }
 
-                if (this.form.seed_ids.length === 0 && this.seeds.length >= 2) {
-                    this.form.seed_ids = [this.seeds[0].id, this.seeds[1].id];
+                if (this.form.seed_ids.length === 0 && this.seeds.length >= 1) {
+                    this.form.seed_ids = [this.seeds[0].id];
                 }
             } catch (e) {
                 showToast('Failed to load flow tester data: ' + e.message, 'error');
@@ -250,8 +250,8 @@ function campaignFlowTest() {
                 return;
             }
 
-            if (this.form.seed_ids.length < 2 || this.form.seed_ids.length > 3) {
-                showToast('Please select 2 to 3 seeds.', 'warning');
+            if (this.form.seed_ids.length < 1 || this.form.seed_ids.length > 3) {
+                showToast('Please select 1 to 3 seeds.', 'warning');
                 return;
             }
 

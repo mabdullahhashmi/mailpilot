@@ -72,7 +72,7 @@ class FlowTestController extends Controller
     {
         $validated = $request->validate([
             'sender_mailbox_id' => 'required|integer|exists:sender_mailboxes,id',
-            'seed_ids' => 'required|array|min:2|max:3',
+            'seed_ids' => 'required|array|min:1|max:3',
             'seed_ids.*' => 'required|integer|distinct|exists:seed_mailboxes,id',
             'phase_count' => 'required|integer|min:1|max:5',
             'open_delay_seconds' => 'nullable|integer|min:1|max:300',
