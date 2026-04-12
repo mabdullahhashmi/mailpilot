@@ -36,10 +36,10 @@
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-1.5">
                         <span class="text-zinc-500 text-xs">Health Score</span>
-                        <span class="text-sm font-bold" :class="d.health_score >= 80 ? 'text-emerald-400' : d.health_score >= 50 ? 'text-amber-400' : 'text-red-400'" x-text="d.health_score + '/100'"></span>
+                        <span class="text-sm font-bold" :class="domainHealthScore(d) >= 80 ? 'text-emerald-400' : domainHealthScore(d) >= 50 ? 'text-amber-400' : 'text-red-400'" x-text="domainHealthScore(d) + '/100'"></span>
                     </div>
                     <div class="w-full h-2 rounded-full bg-white/10 overflow-hidden">
-                        <div class="h-full rounded-full transition-all duration-700" :class="d.health_score >= 80 ? 'bg-emerald-500' : d.health_score >= 50 ? 'bg-amber-500' : 'bg-red-500'" :style="'width:' + d.health_score + '%'"></div>
+                        <div class="h-full rounded-full transition-all duration-700" :class="domainHealthScore(d) >= 80 ? 'bg-emerald-500' : domainHealthScore(d) >= 50 ? 'bg-amber-500' : 'bg-red-500'" :style="'width:' + domainHealthScore(d) + '%'"></div>
                     </div>
                 </div>
 
@@ -100,9 +100,31 @@ function domainsPage() {
     return {
         domains: [], showModal: false, form: {},
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
-        async load() { try { this.domains = await apiCall('/api/warmup/domains'); } catch(e) { this.domains = []; } this.$nextTick(() => lucide.createIcons()); },
+        async load() {
+            try {
+                const data = await apiCall('/api/warmup/domains');
+                const list = Array.isArray(data) ? data : (data?.domains || []);
+                this.domains = list.map(d => ({ ...d, _checking: false }));
+            } catch(e) {
+                this.domains = [];
+            }
+            this.$nextTick(() => lucide.createIcons());
+        },
         resetForm() { this.form = { domain_name: '', daily_sending_cap: 50 }; },
-        getDnsStatus(d, check) { return d.dns_check_results?.[check]?.status || 'missing'; },
+        domainHealthScore(d) {
+            const raw = d?.health_score ?? d?.domain_health_score ?? 0;
+            const value = Number.parseInt(raw, 10);
+            return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+        },
+        getDnsStatus(d, check) {
+            const nestedStatus = d?.dns_check_results?.[check]?.status;
+            if (nestedStatus) return nestedStatus;
+
+            const flatStatus = d?.[`${check}_status`];
+            if (flatStatus === 'pass') return 'valid';
+            if (flatStatus === 'weak') return 'weak';
+            return 'missing';
+        },
         async saveDomain() {
             try { await apiCall('/api/warmup/domains', 'POST', this.form); showToast('Domain added'); this.showModal = false; await this.load(); }
             catch(e) { showToast('Error: ' + e.message, 'error'); }
@@ -110,8 +132,13 @@ function domainsPage() {
         async checkDns(id) {
             const d = this.domains.find(x => x.id === id);
             if (d) d._checking = true;
-            try { await apiCall(`/api/warmup/domains/${id}/check-dns`, 'POST'); showToast('DNS check complete'); await this.load(); }
-            catch(e) { showToast('DNS check failed', 'error'); }
+            try {
+                await apiCall(`/api/warmup/domains/${id}/check-dns`, 'POST');
+                showToast('DNS check complete');
+                await this.load();
+            } catch(e) {
+                showToast('DNS check failed: ' + (e.message || 'Unknown error'), 'error');
+            }
             if (d) d._checking = false;
         },
         async deleteDomain(id) { if (!confirm('Delete this domain?')) return; try { await apiCall(`/api/warmup/domains/${id}`, 'DELETE'); showToast('Deleted'); await this.load(); } catch(e) { showToast('Error', 'error'); } }

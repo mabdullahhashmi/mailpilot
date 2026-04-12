@@ -20,19 +20,31 @@ class DomainService
 
     public function checkDns(Domain $domain): array
     {
-        $results = app(DNSCheckService::class)->fullCheck($domain->domain_name);
+        $dnsService = app(DNSCheckService::class);
+        $results = $dnsService->checkAll($domain->domain_name);
+        $score = $dnsService->calculateScore($results);
+
+        $spfStatus = $results['spf']['status'] ?? 'missing';
+        $dkimStatus = $results['dkim']['status'] ?? 'missing';
+        $dmarcStatus = $results['dmarc']['status'] ?? 'missing';
+        $mxStatus = $results['mx']['status'] ?? 'missing';
 
         $domain->update([
-            'spf_status' => $results['spf'] ? 'pass' : 'fail',
-            'dkim_status' => $results['dkim'] ? 'pass' : 'fail',
-            'dmarc_status' => $results['dmarc'] ? 'pass' : 'fail',
-            'mx_status' => $results['mx'] ? 'pass' : 'fail',
+            'spf_status' => $spfStatus === 'valid' ? 'pass' : ($spfStatus === 'weak' ? 'weak' : 'fail'),
+            'dkim_status' => $dkimStatus === 'valid' ? 'pass' : 'fail',
+            'dmarc_status' => $dmarcStatus === 'valid' ? 'pass' : 'fail',
+            'mx_status' => $mxStatus === 'valid' ? 'pass' : 'fail',
+            'domain_health_score' => $score,
             'dns_last_checked_at' => now(),
         ]);
 
-        $this->recalculateHealthScore($domain);
-
-        return $results;
+        return [
+            'domain_id' => $domain->id,
+            'domain' => $domain->domain_name,
+            'results' => $results,
+            'score' => $score,
+            'checked_at' => now()->toISOString(),
+        ];
     }
 
     public function recalculateHealthScore(Domain $domain): void
