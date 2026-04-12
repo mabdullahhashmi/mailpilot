@@ -102,8 +102,8 @@ class FlowTestService
 
         return match ($step->action_type) {
             'sender_send_initial' => $this->executeSenderSendInitial($sender, $seed, $subject, $step),
-            'seed_open_email' => $this->executeOpen($seed, $subject, $sender->email_address, 'Seed'),
-            'sender_open_email' => $this->executeOpen($sender, $subject, $seed->email_address, 'Sender'),
+            'seed_open_email' => $this->executeOpen($step, $seed, $subject, $sender->email_address, 'Seed'),
+            'sender_open_email' => $this->executeOpen($step, $sender, $subject, $seed->email_address, 'Sender'),
             'seed_star_message' => $this->executeStar($seed, $subject, $sender->email_address),
             'seed_reply' => $this->executeSeedReply($step, $sender, $seed, $subject),
             'sender_reply' => $this->executeSenderReply($step, $sender, $seed, $subject),
@@ -185,28 +185,51 @@ class FlowTestService
         ];
     }
 
-    private function executeOpen(SenderMailbox|SeedMailbox $mailbox, string $subject, string $fromEmail, string $label): array
+    private function executeOpen(FlowTestStep $step, SenderMailbox|SeedMailbox $mailbox, string $subject, string $fromEmail, string $label): array
     {
+        $attempt = (int) (($step->payload['open_attempt'] ?? 0) + 1);
+        $maxAttempts = 4;
+
         $imap = $this->connectImap($mailbox);
         if (!$imap) {
+            if ($attempt < $maxAttempts) {
+                return [
+                    'deferred' => true,
+                    'retry_after_seconds' => 20,
+                    'payload' => ['open_attempt' => $attempt],
+                    'notes' => "{$label} open deferred (IMAP unavailable, attempt {$attempt}/{$maxAttempts})",
+                ];
+            }
+
             return [
-                'notes' => "{$label} open recorded (IMAP unavailable)",
+                'notes' => "{$label} open recorded (IMAP unavailable after {$maxAttempts} attempts)",
             ];
         }
 
         try {
-            $uid = $this->findMessageInMailbox($imap, $subject, $fromEmail);
+            $uid = $this->findMessageForOpen($imap, $mailbox, $subject, $fromEmail);
 
             if ($uid) {
                 imap_setflag_full($imap, (string) $uid, '\\Seen', ST_UID);
                 imap_fetchheader($imap, $uid, FT_UID);
                 imap_fetchbody($imap, $uid, '1', FT_UID);
+
+                return [
+                    'notes' => "{$label} opened message (UID: {$uid})",
+                ];
+            }
+
+            if ($attempt < $maxAttempts) {
+                return [
+                    'deferred' => true,
+                    'retry_after_seconds' => 20,
+                    'payload' => ['open_attempt' => $attempt],
+                    'notes' => "{$label} open deferred (message not found yet, attempt {$attempt}/{$maxAttempts})",
+                ];
             }
 
             return [
-                'notes' => $uid
-                    ? "{$label} opened message (UID: {$uid})"
-                    : "{$label} open recorded (message not found)",
+                'notes' => "{$label} open recorded (message not found after {$maxAttempts} attempts)",
             ];
         } finally {
             imap_close($imap);
@@ -309,23 +332,83 @@ class FlowTestService
         return @imap_open($path, $username, $password, 0, 1);
     }
 
+    private function imapPath(SenderMailbox|SeedMailbox $mailbox): string
+    {
+        $host = $mailbox->imap_host ?? $mailbox->smtp_host;
+        $port = $mailbox->imap_port ?? 993;
+        $encryption = $mailbox->imap_encryption ?? 'ssl';
+        $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
+        return "{{$host}:{$port}{$flags}}";
+    }
+
+    private function findMessageForOpen($imap, SenderMailbox|SeedMailbox $mailbox, string $subject, string $fromEmail): ?int
+    {
+        $uid = $this->findMessageInMailbox($imap, $subject, $fromEmail);
+        if ($uid) {
+            return $uid;
+        }
+
+        foreach ($this->openSearchFolders() as $folder) {
+            if (@imap_reopen($imap, $this->imapPath($mailbox) . $folder)) {
+                $uid = $this->findMessageInMailbox($imap, $subject, $fromEmail);
+                if ($uid) {
+                    return $uid;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function openSearchFolders(): array
+    {
+        return [
+            'INBOX',
+            '[Gmail]/All Mail',
+            'All Mail',
+            '[Gmail]/Spam',
+            'Spam',
+            'Junk',
+            'INBOX.Junk',
+            'INBOX.Spam',
+            'Junk Email',
+            'Junk E-mail',
+        ];
+    }
+
     private function findMessageInMailbox($imap, string $subject, string $fromEmail): ?int
     {
         $cleanSubject = str_replace(['Re: ', 'RE: ', 'Fwd: ', 'FWD: '], '', $subject);
         $cleanSubject = substr($cleanSubject, 0, 80);
+        $normalizedSubject = strtolower(trim($cleanSubject));
+        $escapedSubject = addcslashes($cleanSubject, '"\\');
+        $escapedFrom = addcslashes($fromEmail, '"\\');
 
-        $results = @imap_search(
-            $imap,
-            'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '" FROM "' . $fromEmail . '"',
-            SE_UID
-        );
-
-        if (!$results || empty($results)) {
-            $results = @imap_search($imap, 'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '"', SE_UID);
-        }
+        $results = @imap_search($imap, 'SUBJECT "' . $escapedSubject . '" FROM "' . $escapedFrom . '"', SE_UID);
 
         if ($results && !empty($results)) {
             return (int) end($results);
+        }
+
+        if (!$results || empty($results)) {
+            $results = @imap_search($imap, 'SUBJECT "' . $escapedSubject . '"', SE_UID);
+            if ($results && !empty($results)) {
+                return (int) end($results);
+            }
+        }
+
+        $fromMatches = @imap_search($imap, 'FROM "' . $escapedFrom . '"', SE_UID);
+        if ($fromMatches && !empty($fromMatches)) {
+            $candidates = array_slice($fromMatches, -30);
+            foreach (array_reverse($candidates) as $uid) {
+                $overview = @imap_fetch_overview($imap, (string) $uid, FT_UID);
+                $subjectLine = $overview[0]->subject ?? '';
+                $subjectLine = strtolower(trim(preg_replace('/^(re|fwd?):\s*/i', '', $subjectLine)));
+
+                if ($subjectLine !== '' && str_contains($subjectLine, $normalizedSubject)) {
+                    return (int) $uid;
+                }
+            }
         }
 
         return null;

@@ -70,6 +70,22 @@ class ExecuteFlowTestStep implements ShouldQueue
         try {
             $result = $flowTests->executeStep($step);
 
+            if (!empty($result['deferred'])) {
+                $payload = array_merge($step->payload ?? [], $result['payload'] ?? []);
+                $retryAfter = max(5, (int) ($result['retry_after_seconds'] ?? 20));
+
+                $step->update([
+                    'status' => 'pending',
+                    'notes' => $result['notes'] ?? $step->notes,
+                    'payload' => $payload,
+                    'error_message' => null,
+                    'executed_at' => null,
+                ]);
+
+                self::dispatch($step->id)->onQueue('warmup')->delay(now()->addSeconds($retryAfter));
+                return;
+            }
+
             $step->update([
                 'status' => 'completed',
                 'executed_at' => now(),

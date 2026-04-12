@@ -294,17 +294,37 @@ class EventExecutionService
         }
 
         try {
-            // Search for the message by subject in INBOX
-            $messageUid = $this->findMessageInMailbox($imap, $thread->subject_line, $fromEmail);
+            $messageUid = $this->findMessageForOpen($imap, $actorMailbox, $thread->subject_line, $fromEmail);
 
-            if ($messageUid) {
-                // Mark message as SEEN (this is what "open" means at IMAP level)
-                imap_setflag_full($imap, (string)$messageUid, '\\Seen', ST_UID);
+            if (!$messageUid) {
+                $payload = $event->payload ?? [];
+                $attempt = (int) (($payload['open_attempt'] ?? 0) + 1);
+                $maxAttempts = 3;
 
-                // Also fetch headers to trigger provider tracking
-                imap_fetchheader($imap, $messageUid, FT_UID);
-                imap_fetchbody($imap, $messageUid, '1', FT_UID);
+                if ($attempt <= $maxAttempts) {
+                    $payload['open_attempt'] = $attempt;
+                    $payload['open_actor'] = $openActor;
+
+                    $event->update([
+                        'status' => 'pending',
+                        'scheduled_at' => now()->addMinutes(2),
+                        'payload' => $payload,
+                        'lock_token' => null,
+                        'lock_expires_at' => null,
+                    ]);
+
+                    return ['message' => "{$actorLabel} open deferred (message not found yet, attempt {$attempt}/{$maxAttempts})", 'schedule_next' => false];
+                }
+
+                return ['message' => "{$actorLabel} open recorded (message not found after {$maxAttempts} checks)", 'schedule_next' => false];
             }
+
+            // Mark message as SEEN (this is what "open" means at IMAP level)
+            imap_setflag_full($imap, (string)$messageUid, '\\Seen', ST_UID);
+
+            // Also fetch headers to trigger provider tracking
+            imap_fetchheader($imap, $messageUid, FT_UID);
+            imap_fetchbody($imap, $messageUid, '1', FT_UID);
 
             // Track open for health + sender health
             try {
@@ -622,6 +642,44 @@ class EventExecutionService
     }
 
     /**
+     * Find open target message in inbox and common fallback folders.
+     */
+    private function findMessageForOpen($imap, $mailbox, string $subject, string $fromEmail): ?int
+    {
+        $uid = $this->findMessageInMailbox($imap, $subject, $fromEmail);
+        if ($uid) {
+            return $uid;
+        }
+
+        foreach ($this->openSearchFolders() as $folder) {
+            if (@imap_reopen($imap, $this->imapPath($mailbox) . $folder)) {
+                $uid = $this->findMessageInMailbox($imap, $subject, $fromEmail);
+                if ($uid) {
+                    return $uid;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function openSearchFolders(): array
+    {
+        return [
+            'INBOX',
+            '[Gmail]/All Mail',
+            'All Mail',
+            '[Gmail]/Spam',
+            'Spam',
+            'Junk',
+            'INBOX.Junk',
+            'INBOX.Spam',
+            'Junk Email',
+            'Junk E-mail',
+        ];
+    }
+
+    /**
      * Find a message UID in the current IMAP mailbox by subject and sender.
      */
     private function findMessageInMailbox($imap, string $subject, string $fromEmail): ?int
@@ -629,17 +687,37 @@ class EventExecutionService
         // Clean subject for IMAP search
         $cleanSubject = str_replace(['Re: ', 'RE: ', 'Fwd: ', 'FWD: '], '', $subject);
         $cleanSubject = substr($cleanSubject, 0, 60); // IMAP search limit
+        $normalizedSubject = strtolower(trim($cleanSubject));
+        $escapedSubject = addcslashes($cleanSubject, '"\\');
+        $escapedFrom = addcslashes($fromEmail, '"\\');
 
-        $results = @imap_search($imap, 'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '" FROM "' . $fromEmail . '"', SE_UID);
+        $results = @imap_search($imap, 'SUBJECT "' . $escapedSubject . '" FROM "' . $escapedFrom . '"', SE_UID);
+
+        if ($results && !empty($results)) {
+            return (int) end($results);
+        }
 
         if (!$results || empty($results)) {
             // Fallback: search by subject only
-            $results = @imap_search($imap, 'SUBJECT "' . addcslashes($cleanSubject, '"\\') . '"', SE_UID);
+            $results = @imap_search($imap, 'SUBJECT "' . $escapedSubject . '"', SE_UID);
+            if ($results && !empty($results)) {
+                return (int) end($results);
+            }
         }
 
-        if ($results && !empty($results)) {
-            // Return the most recent match
-            return (int) end($results);
+        // Fallback: search by sender then match subject via overview on recent emails.
+        $fromMatches = @imap_search($imap, 'FROM "' . $escapedFrom . '"', SE_UID);
+        if ($fromMatches && !empty($fromMatches)) {
+            $candidates = array_slice($fromMatches, -30);
+            foreach (array_reverse($candidates) as $uid) {
+                $overview = @imap_fetch_overview($imap, (string) $uid, FT_UID);
+                $subjectLine = $overview[0]->subject ?? '';
+                $subjectLine = strtolower(trim(preg_replace('/^(re|fwd?):\s*/i', '', $subjectLine)));
+
+                if ($subjectLine !== '' && str_contains($subjectLine, $normalizedSubject)) {
+                    return (int) $uid;
+                }
+            }
         }
 
         return null;
