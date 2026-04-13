@@ -150,6 +150,11 @@ class EventExecutionService
         $seed = $thread->seedMailbox;
         $sender = $thread->senderMailbox;
 
+        $replyQuotaGate = $this->deferReplyIfOutsideDayRules($event, $thread, 'seed_reply');
+        if ($replyQuotaGate !== null) {
+            return $replyQuotaGate;
+        }
+
         // Sequence enforcement: seed must have "opened" (seed_open_email) before replying
         $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'seed');
 
@@ -222,6 +227,11 @@ class EventExecutionService
         $thread = Thread::findOrFail($event->thread_id);
         $sender = $thread->senderMailbox;
         $seed = $thread->seedMailbox;
+
+        $replyQuotaGate = $this->deferReplyIfOutsideDayRules($event, $thread, 'sender_reply');
+        if ($replyQuotaGate !== null) {
+            return $replyQuotaGate;
+        }
 
         // Sequence enforcement: sender should open seed email before replying
         $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'sender');
@@ -483,6 +493,16 @@ class EventExecutionService
         $actorId = $thread->next_actor_type === 'seed' ? $thread->seed_mailbox_id : $thread->sender_mailbox_id;
         $recipientId = $thread->next_actor_type === 'seed' ? $thread->sender_mailbox_id : $thread->seed_mailbox_id;
 
+        if (in_array($nextType, ['seed_reply', 'sender_reply'], true)) {
+            [$canScheduleReply, $reason] = $this->canScheduleReplyForCurrentWarmupDay($thread);
+
+            if (!$canScheduleReply) {
+                $thread->update(['thread_status' => 'awaiting_reply']);
+                Log::info("Reply scheduling deferred for thread #{$thread->id}: {$reason}");
+                return;
+            }
+        }
+
         // Maybe schedule auxiliary events (open, star, mark important)
         $this->maybeScheduleAuxiliaryEvents($thread, $completedEvent, $delayMinutes);
 
@@ -498,6 +518,54 @@ class EventExecutionService
             'status' => 'pending',
             'priority' => 4,
         ]);
+    }
+
+    private function canScheduleReplyForCurrentWarmupDay(Thread $thread): array
+    {
+        $campaign = $thread->warmupCampaign;
+        $profile = $campaign?->profile;
+
+        if (!$campaign || !$profile) {
+            return [true, 'campaign/profile missing'];
+        }
+
+        $day = (int) ($campaign->current_day_number ?? 1);
+        $rules = $profile->getRulesForDay($day);
+        $maxReplies = (int) ($rules['max_replies'] ?? 0);
+
+        if ($maxReplies <= 0) {
+            return [false, "max_replies is 0 for warmup day {$day}"];
+        }
+
+        [$windowStart, $windowEnd] = $this->currentWarmupDayWindow($campaign);
+
+        $alreadyPlannedOrCompleted = WarmupEvent::where('warmup_campaign_id', $campaign->id)
+            ->whereIn('event_type', ['seed_reply', 'sender_reply'])
+            ->whereBetween('scheduled_at', [$windowStart, $windowEnd])
+            ->whereIn('status', ['pending', 'locked', 'executing', 'completed'])
+            ->count();
+
+        if ($alreadyPlannedOrCompleted >= $maxReplies) {
+            return [false, "reply quota reached ({$alreadyPlannedOrCompleted}/{$maxReplies}) for warmup day {$day}"];
+        }
+
+        return [true, 'within reply quota'];
+    }
+
+    private function currentWarmupDayWindow($campaign): array
+    {
+        $duration = max(30, min(1440, (int) ($campaign->day_duration_minutes ?? 1440)));
+
+        if ($duration >= 1440) {
+            return [now()->startOfDay(), now()->endOfDay()];
+        }
+
+        $startAnchor = $campaign->created_at ? $campaign->created_at->copy() : now();
+        $dayIndex = max(0, (int) ($campaign->current_day_number - 1));
+        $windowStart = $startAnchor->addMinutes($dayIndex * $duration);
+        $windowEnd = $windowStart->copy()->addMinutes($duration);
+
+        return [$windowStart, $windowEnd];
     }
 
     private function maybeScheduleAuxiliaryEvents(Thread $thread, WarmupEvent $event, int $replyDelay): void
@@ -550,6 +618,35 @@ class EventExecutionService
                 }
             })
             ->exists();
+    }
+
+    private function deferReplyIfOutsideDayRules(WarmupEvent $event, Thread $thread, string $eventType): ?array
+    {
+        [$allowed, $reason] = $this->canScheduleReplyForCurrentWarmupDay($thread);
+
+        if ($allowed) {
+            return null;
+        }
+
+        [, $windowEnd] = $this->currentWarmupDayWindow($thread->warmupCampaign);
+
+        // Retry at the next warmup-day boundary (or shortly from now if already past it).
+        $retryAt = $windowEnd->copy()->addMinutes(rand(1, 5));
+        if ($retryAt->lte(now())) {
+            $retryAt = now()->addMinutes(rand(5, 15));
+        }
+
+        $event->update([
+            'status' => 'pending',
+            'scheduled_at' => $retryAt,
+            'lock_token' => null,
+            'lock_expires_at' => null,
+        ]);
+
+        return [
+            'message' => strtoupper($eventType) . " deferred for thread #{$thread->id}: {$reason}",
+            'schedule_next' => false,
+        ];
     }
 
     /**
