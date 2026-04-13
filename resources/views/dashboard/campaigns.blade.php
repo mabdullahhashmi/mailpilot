@@ -8,7 +8,7 @@
 
     <div class="flex items-center justify-between mb-6">
         <span class="text-zinc-500 text-sm" x-text="campaigns.length + ' campaigns'"></span>
-        <button @click="showModal = true; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
+        <button @click="openCreateModal()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i> New Campaign
         </button>
     </div>
@@ -129,6 +129,9 @@
                                 <option :value="p.id" x-text="p.profile_name"></option>
                             </template>
                         </select>
+                        <p x-show="!hasShortTestProfile()" class="mt-1.5 text-[11px] text-amber-400/90">
+                            Short Test (6 Hour Days) profile not found yet. Run latest migrations + warmup seeder on server.
+                        </p>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
@@ -157,15 +160,33 @@ function campaignsPage() {
     return {
         campaigns: [], senderOptions: [], profileOptions: [], showModal: false, form: {},
         async init() {
-            const [campaigns, senders, profiles] = await Promise.allSettled([
-                apiCall('/api/warmup/campaigns'),
+            await this.loadCampaigns();
+            await this.loadOptions();
+            this.$nextTick(() => lucide.createIcons());
+        },
+        async loadCampaigns() {
+            try {
+                this.campaigns = await apiCall('/api/warmup/campaigns');
+            } catch (e) {
+                this.campaigns = [];
+            }
+        },
+        async loadOptions() {
+            const [senders, profiles] = await Promise.allSettled([
                 apiCall('/api/warmup/sender-mailboxes'),
                 apiCall('/api/warmup/profiles'),
             ]);
-            this.campaigns = campaigns.value ?? [];
             this.senderOptions = senders.value ?? [];
             this.profileOptions = profiles.value ?? [];
+        },
+        async openCreateModal() {
+            this.resetForm();
+            this.showModal = true;
+            await this.loadOptions();
             this.$nextTick(() => lucide.createIcons());
+        },
+        hasShortTestProfile() {
+            return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
         resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00' }; },
         dayPercent(c) { const total = c.profile?.total_days || 14; return Math.min(100, Math.round(((c.current_day_number || 1) / total) * 100)); },
