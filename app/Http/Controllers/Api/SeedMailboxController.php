@@ -11,6 +11,41 @@ class SeedMailboxController extends Controller
 {
     public function __construct(private SeedService $service) {}
 
+    private const PROVIDER_PRESETS = [
+        'google' => [
+            'smtp_host' => 'smtp.gmail.com',
+            'smtp_port' => 587,
+            'smtp_encryption' => 'tls',
+            'imap_host' => 'imap.gmail.com',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
+        'microsoft' => [
+            'smtp_host' => 'smtp.office365.com',
+            'smtp_port' => 587,
+            'smtp_encryption' => 'tls',
+            'imap_host' => 'outlook.office365.com',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
+        'zoho' => [
+            'smtp_host' => 'smtp.zoho.com',
+            'smtp_port' => 587,
+            'smtp_encryption' => 'tls',
+            'imap_host' => 'imap.zoho.com',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
+        'yahoo' => [
+            'smtp_host' => 'smtp.mail.yahoo.com',
+            'smtp_port' => 587,
+            'smtp_encryption' => 'tls',
+            'imap_host' => 'imap.mail.yahoo.com',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
+    ];
+
     public function index(): JsonResponse
     {
         $seeds = \App\Models\SeedMailbox::orderBy('created_at', 'desc')->get();
@@ -37,6 +72,104 @@ class SeedMailboxController extends Controller
 
         $seed = $this->service->create($validated);
         return response()->json($seed, 201);
+    }
+
+    /**
+     * Quick bulk add using simple lines: email,app_password[,provider]
+     */
+    public function bulkStore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'bulk_text' => 'required|string',
+            'provider' => 'nullable|in:google,microsoft,zoho,yahoo',
+            'daily_interaction_cap' => 'nullable|integer|min:1|max:1000',
+        ]);
+
+        $defaultProvider = $validated['provider'] ?? 'google';
+        $dailyCap = (int) ($validated['daily_interaction_cap'] ?? 20);
+
+        $lines = preg_split('/\r\n|\r|\n/', (string) $validated['bulk_text']);
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($lines as $i => $rawLine) {
+            $lineNumber = $i + 1;
+            $line = trim((string) $rawLine);
+
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            $parts = preg_split('/[,;|\t]/', $line);
+            $parts = array_map(fn ($v) => trim((string) $v), $parts ?: []);
+
+            if (count($parts) < 2) {
+                $errors[] = "Line {$lineNumber}: expected email,app_password[,provider]";
+                $skipped++;
+                continue;
+            }
+
+            $email = $parts[0] ?? '';
+            $password = preg_replace('/\s+/', '', (string) ($parts[1] ?? ''));
+            $provider = strtolower($parts[2] ?? $defaultProvider);
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "Line {$lineNumber}: invalid email '{$email}'";
+                $skipped++;
+                continue;
+            }
+
+            if ($password === '') {
+                $errors[] = "Line {$lineNumber}: missing app password for '{$email}'";
+                $skipped++;
+                continue;
+            }
+
+            if (!isset(self::PROVIDER_PRESETS[$provider])) {
+                $errors[] = "Line {$lineNumber}: unsupported provider '{$provider}' for '{$email}'";
+                $skipped++;
+                continue;
+            }
+
+            if (\App\Models\SeedMailbox::where('email_address', $email)->exists()) {
+                $errors[] = "Line {$lineNumber}: '{$email}' already exists";
+                $skipped++;
+                continue;
+            }
+
+            $preset = self::PROVIDER_PRESETS[$provider];
+
+            try {
+                $this->service->create([
+                    'email_address' => $email,
+                    'provider' => $provider,
+                    'smtp_host' => $preset['smtp_host'],
+                    'smtp_port' => $preset['smtp_port'],
+                    'smtp_username' => $email,
+                    'smtp_password' => $password,
+                    'smtp_encryption' => $preset['smtp_encryption'],
+                    'imap_host' => $preset['imap_host'],
+                    'imap_port' => $preset['imap_port'],
+                    'imap_username' => $email,
+                    'imap_password' => $password,
+                    'imap_encryption' => $preset['imap_encryption'],
+                    'daily_interaction_cap' => $dailyCap,
+                    'status' => 'active',
+                ]);
+                $imported++;
+            } catch (\Throwable $e) {
+                $errors[] = "Line {$lineNumber}: " . $e->getMessage();
+                $skipped++;
+            }
+        }
+
+        return response()->json([
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 50),
+            'format' => 'email,app_password[,provider] (provider optional: google|microsoft|zoho|yahoo)',
+        ]);
     }
 
     public function show(int $id): JsonResponse

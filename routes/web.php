@@ -48,6 +48,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
 
     // Seed Mailboxes
     Route::get('seed-mailboxes/{id}/history', [\App\Http\Controllers\Api\SeedMailboxController::class, 'history']);
+    Route::post('seed-mailboxes/bulk', [\App\Http\Controllers\Api\SeedMailboxController::class, 'bulkStore']);
     Route::apiResource('seed-mailboxes', \App\Http\Controllers\Api\SeedMailboxController::class);
     Route::post('seed-mailboxes/{id}/pause', [\App\Http\Controllers\Api\SeedMailboxController::class, 'pause']);
     Route::post('seed-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SeedMailboxController::class, 'resume']);

@@ -9,6 +9,9 @@
     <div class="flex items-center justify-between mb-6">
         <span class="text-zinc-500 text-sm" x-text="seeds.length + ' seeds'"></span>
         <div class="flex items-center gap-2">
+            <button @click="openQuickBulk()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition">
+                <i data-lucide="list-plus" class="w-4 h-4"></i> Quick Bulk Add
+            </button>
             <button @click="showImport = true" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/10 transition">
                 <i data-lucide="upload" class="w-4 h-4"></i> CSV Import
             </button>
@@ -75,6 +78,68 @@
             <p class="text-zinc-600 text-sm mt-1">Seeds receive warmup emails and generate positive signals</p>
         </div>
     </div>
+
+        <!-- Quick Bulk Add Modal -->
+        <div x-show="showQuickBulk" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showQuickBulk = false">
+            <div class="w-full max-w-3xl glass rounded-2xl p-6 fade-in" @click.stop>
+                <div class="flex items-center justify-between mb-5">
+                    <div>
+                        <h3 class="text-white font-semibold text-lg">Quick Bulk Add Seeds</h3>
+                        <p class="text-zinc-500 text-xs mt-0.5">Paste one account per line: email + app password. No CSV needed.</p>
+                    </div>
+                    <button @click="showQuickBulk = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Default Provider</label>
+                        <select x-model="bulkProvider" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                            <option value="google">Google (Gmail)</option>
+                            <option value="microsoft">Microsoft (Outlook/365)</option>
+                            <option value="zoho">Zoho Mail</option>
+                            <option value="yahoo">Yahoo Mail</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Daily Interaction Cap</label>
+                        <input type="number" min="1" x-model="bulkCap" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                    </div>
+                    <div class="flex items-end">
+                        <div class="w-full p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300">
+                            Format: <span class="font-mono">email,app_password[,provider]</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Accounts</label>
+                    <textarea x-model="bulkText" rows="10" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white font-mono"
+                              placeholder="seed1@gmail.com,abcd efgh ijkl mnop\nseed2@gmail.com,qwer tyui opas dfgh\nseed3@outlook.com,zxcv bnmq asdf hjkl,microsoft"></textarea>
+                </div>
+
+                <div x-show="bulkResult" class="mb-4 p-3 rounded-xl" :class="bulkResult?.skipped > 0 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'">
+                    <p class="text-sm font-medium" :class="bulkResult?.skipped > 0 ? 'text-amber-400' : 'text-emerald-400'">
+                        <span x-text="bulkResult?.imported || 0"></span> imported,
+                        <span x-text="bulkResult?.skipped || 0"></span> skipped
+                    </p>
+                    <template x-if="bulkResult?.errors?.length">
+                        <ul class="mt-2 space-y-0.5 max-h-28 overflow-y-auto">
+                            <template x-for="err in bulkResult.errors" :key="err">
+                                <li class="text-red-400/80 text-[11px]" x-text="err"></li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="showQuickBulk = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Close</button>
+                    <button type="button" @click="saveQuickBulk()" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="bulkLoading || !bulkText.trim()">
+                        <span x-show="!bulkLoading">Bulk Add Now</span>
+                        <span x-show="bulkLoading">Adding...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
 
     <!-- CSV Import Modal -->
     <div x-show="showImport" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showImport = false">
@@ -350,13 +415,40 @@ const PROVIDER_DEFAULTS = {
 
 function seedsPage() {
     return {
-        seeds: [], showModal: false, showImport: false, showDetail: false, detailLoading: false, seedDetail: null, editMode: false, editId: null, saving: false, importFile: null, importing: false, importResult: null, form: {},
+        seeds: [],
+        showModal: false,
+        showImport: false,
+        showQuickBulk: false,
+        showDetail: false,
+        detailLoading: false,
+        seedDetail: null,
+        editMode: false,
+        editId: null,
+        saving: false,
+        importFile: null,
+        importing: false,
+        importResult: null,
+        bulkText: '',
+        bulkProvider: 'google',
+        bulkCap: 20,
+        bulkLoading: false,
+        bulkResult: null,
+        form: {},
 
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
         async load() { try { this.seeds = await apiCall('/api/warmup/seed-mailboxes'); } catch(e) { this.seeds = []; } this.$nextTick(() => lucide.createIcons()); },
 
         resetForm() {
             this.form = { email_address: '', provider: '', smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_encryption: 'tls', imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_encryption: 'ssl', daily_interaction_cap: 20 };
+        },
+
+        openQuickBulk() {
+            this.showQuickBulk = true;
+            this.bulkText = '';
+            this.bulkProvider = 'google';
+            this.bulkCap = 20;
+            this.bulkResult = null;
+            this.$nextTick(() => lucide.createIcons());
         },
 
         applyProviderDefaults() {
@@ -415,6 +507,25 @@ function seedsPage() {
         },
         async deleteSeed(id) { if (!confirm('Delete this seed?')) return; try { await apiCall(`/api/warmup/seed-mailboxes/${id}`, 'DELETE'); showToast('Deleted'); await this.load(); } catch(e) { showToast('Error', 'error'); } },
         async togglePause(s) { const a = s.status === 'active' ? 'pause' : 'resume'; try { await apiCall(`/api/warmup/seed-mailboxes/${s.id}/${a}`, 'POST'); showToast(`Seed ${a}d`); await this.load(); } catch(e) { showToast('Error', 'error'); } },
+        async saveQuickBulk() {
+            if (!this.bulkText.trim()) return;
+
+            this.bulkLoading = true;
+            this.bulkResult = null;
+            try {
+                this.bulkResult = await apiCall('/api/warmup/seed-mailboxes/bulk', 'POST', {
+                    bulk_text: this.bulkText,
+                    provider: this.bulkProvider,
+                    daily_interaction_cap: this.bulkCap,
+                });
+
+                showToast(`Imported ${this.bulkResult.imported || 0} seeds`, 'success');
+                await this.load();
+            } catch (e) {
+                showToast('Bulk add failed: ' + e.message, 'error');
+            }
+            this.bulkLoading = false;
+        },
         async uploadCsv() {
             if (!this.importFile) return;
             this.importing = true;
