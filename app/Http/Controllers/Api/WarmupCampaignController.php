@@ -261,7 +261,7 @@ class WarmupCampaignController extends Controller
                     'new_thread_target' => $newThreads,
                     'reply_target' => $replies,
                     'total_action_budget' => (int) ($run->total_action_budget ?? 0),
-                    'planned_sender_actions' => $newThreads + $replies,
+                    'planned_new_plus_replies' => $newThreads + $replies,
                     'actual_new_threads' => (int) ($run->actual_new_threads ?? 0),
                     'actual_replies' => (int) ($run->actual_replies ?? 0),
                     'actual_total_actions' => (int) ($run->actual_total_actions ?? 0),

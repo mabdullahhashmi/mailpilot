@@ -195,7 +195,7 @@
                                 <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Stage</th>
                                 <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">New</th>
                                 <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Replies</th>
-                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Sender Actions</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">New + Replies</th>
                                 <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Total Budget</th>
                                 <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Eligible Seeds</th>
                                 <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
@@ -209,7 +209,7 @@
                                     <td class="px-5 py-3 text-sm text-zinc-400" x-text="(rec.warmup_stage || '—').replace('_',' ')"></td>
                                     <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.new_thread_target"></td>
                                     <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.reply_target"></td>
-                                    <td class="px-5 py-3 text-sm text-right text-brand-300 font-semibold" x-text="rec.planned_sender_actions"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-brand-300 font-semibold" x-text="rec.planned_new_plus_replies"></td>
                                     <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.total_action_budget"></td>
                                     <td class="px-5 py-3 text-sm text-right text-zinc-400" x-text="rec.eligible_seed_count"></td>
                                     <td class="px-5 py-3">
