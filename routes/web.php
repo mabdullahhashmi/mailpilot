@@ -70,6 +70,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
     Route::get('campaigns/{id}/schedule', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'schedule']);
     Route::get('campaigns/{id}/events', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'events']);
+    Route::get('campaigns/{id}/seed-eligibility', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'seedEligibility']);
 
     // Flow Test (isolated from daily warmup quota)
     Route::get('flow-tests/meta', [\App\Http\Controllers\Api\FlowTestController::class, 'meta']);

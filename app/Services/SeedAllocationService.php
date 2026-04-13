@@ -6,6 +6,8 @@ use App\Models\SenderMailbox;
 use App\Models\SeedMailbox;
 use App\Models\Domain;
 use App\Models\SeedUsageLog;
+use App\Models\PauseRule;
+use App\Models\Thread;
 use Illuminate\Support\Collection;
 
 class SeedAllocationService
@@ -35,6 +37,157 @@ class SeedAllocationService
             ->filter(function (SeedMailbox $seed) use ($sender) {
                 return $this->hasNotExceededDailyCap($seed);
             });
+    }
+
+    /**
+     * Build an explainable eligibility report for a sender/domain.
+     * Includes per-seed reasons so UI can show why a seed is blocked.
+     */
+    public function getEligibilityReport(SenderMailbox $sender, Domain $domain, ?string $date = null): array
+    {
+        $forDate = $date
+            ? \Carbon\Carbon::parse($date)->toDateString()
+            : today()->toDateString();
+
+        $senderDomainName = strtolower(explode('@', $sender->email_address)[1] ?? ($domain->domain_name ?? ''));
+
+        $seeds = SeedMailbox::orderBy('email_address')
+            ->get([
+                'id', 'email_address', 'provider_type', 'status',
+                'daily_total_interaction_cap',
+            ]);
+
+        $seedIds = $seeds->pluck('id')->values();
+
+        if ($seedIds->isEmpty()) {
+            return [
+                'date' => $forDate,
+                'summary' => [
+                    'total' => 0,
+                    'eligible_base' => 0,
+                    'eligible_strict' => 0,
+                    'blocked' => 0,
+                    'blocked_same_domain' => 0,
+                    'blocked_paused' => 0,
+                    'blocked_daily_cap' => 0,
+                    'blocked_cooldown' => 0,
+                ],
+                'seeds' => [],
+            ];
+        }
+
+        $logsBySeed = SeedUsageLog::whereIn('seed_mailbox_id', $seedIds)
+            ->where('log_date', $forDate)
+            ->get()
+            ->keyBy('seed_mailbox_id');
+
+        $pausedSeedIds = PauseRule::where('pausable_type', SeedMailbox::class)
+            ->whereIn('pausable_id', $seedIds)
+            ->where('status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('auto_resume_at')
+                    ->orWhere('auto_resume_at', '>', now());
+            })
+            ->pluck('pausable_id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+
+        $cooldownDays = 3;
+        $cooldownFromDate = \Carbon\Carbon::parse($forDate)->subDays($cooldownDays)->toDateString();
+
+        $recentLogsBySeed = SeedUsageLog::whereIn('seed_mailbox_id', $seedIds)
+            ->where('log_date', '>=', $cooldownFromDate)
+            ->get()
+            ->groupBy('seed_mailbox_id');
+
+        $recentPairThreadSeedIds = Thread::where('sender_mailbox_id', $sender->id)
+            ->whereIn('seed_mailbox_id', $seedIds)
+            ->whereDate('created_at', '>=', $cooldownFromDate)
+            ->pluck('seed_mailbox_id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+
+        $rows = [];
+
+        foreach ($seeds as $seed) {
+            $email = strtolower((string) $seed->email_address);
+            $isActive = $seed->status === 'active';
+            $isSameDomain = $senderDomainName !== '' && str_ends_with($email, "@{$senderDomainName}");
+            $isPaused = $pausedSeedIds->has((int) $seed->id);
+
+            $dailyCap = (int) ($seed->daily_total_interaction_cap ?? 20);
+            $usedToday = (int) ($logsBySeed->get((int) $seed->id)?->interactions_today ?? 0);
+            $withinDailyCap = $usedToday < $dailyCap;
+
+            $pairCooldownOk = true;
+
+            $recentLogs = $recentLogsBySeed->get((int) $seed->id, collect());
+            foreach ($recentLogs as $log) {
+                $perSender = $log->per_sender_usage ?? [];
+                $usage = (int) ($perSender[$sender->id] ?? $perSender[(string) $sender->id] ?? 0);
+                if ($usage > 0) {
+                    $pairCooldownOk = false;
+                    break;
+                }
+            }
+
+            if ($pairCooldownOk && $recentPairThreadSeedIds->has((int) $seed->id)) {
+                $pairCooldownOk = false;
+            }
+
+            $eligibleBase = $isActive && !$isSameDomain && !$isPaused && $withinDailyCap;
+            $eligibleStrict = $eligibleBase && $pairCooldownOk;
+
+            $reasons = [];
+            if (!$isActive) {
+                $reasons[] = 'seed_not_active';
+            }
+            if ($isSameDomain) {
+                $reasons[] = 'same_domain';
+            }
+            if ($isPaused) {
+                $reasons[] = 'paused';
+            }
+            if (!$withinDailyCap) {
+                $reasons[] = 'daily_cap_reached';
+            }
+            if (!$pairCooldownOk) {
+                $reasons[] = 'sender_seed_cooldown';
+            }
+
+            $rows[] = [
+                'seed_id' => (int) $seed->id,
+                'seed_email' => $seed->email_address,
+                'provider_type' => $seed->provider_type,
+                'status' => $seed->status,
+                'daily_cap' => $dailyCap,
+                'used_today' => $usedToday,
+                'remaining_today' => max(0, $dailyCap - $usedToday),
+                'same_domain' => $isSameDomain,
+                'paused' => $isPaused,
+                'cooldown_blocked' => !$pairCooldownOk,
+                'eligible_base' => $eligibleBase,
+                'eligible_strict' => $eligibleStrict,
+                'reasons' => $reasons,
+            ];
+        }
+
+        $summary = [
+            'total' => count($rows),
+            'eligible_base' => count(array_filter($rows, fn ($r) => $r['eligible_base'])),
+            'eligible_strict' => count(array_filter($rows, fn ($r) => $r['eligible_strict'])),
+            'blocked' => count(array_filter($rows, fn ($r) => !$r['eligible_base'])),
+            'blocked_same_domain' => count(array_filter($rows, fn ($r) => $r['same_domain'])),
+            'blocked_paused' => count(array_filter($rows, fn ($r) => $r['paused'])),
+            'blocked_daily_cap' => count(array_filter($rows, fn ($r) => $r['used_today'] >= $r['daily_cap'])),
+            'blocked_cooldown' => count(array_filter($rows, fn ($r) => $r['cooldown_blocked'])),
+        ];
+
+        return [
+            'date' => $forDate,
+            'summary' => $summary,
+            'seeds' => $rows,
+        ];
     }
 
     /**

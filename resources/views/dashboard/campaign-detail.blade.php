@@ -175,6 +175,74 @@
                 </div>
             </div>
 
+            <!-- Seed eligibility checker -->
+            <div class="glass rounded-2xl overflow-hidden mb-5">
+                <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                    <h5 class="text-white text-sm font-semibold">Seed Eligibility Check</h5>
+                    <span class="text-zinc-500 text-[11px]" x-text="'Date: ' + (seedEligibility.date || selectedScheduleDate || todayDateString())"></span>
+                </div>
+
+                <div x-show="seedEligibilityLoading" class="px-5 py-8 text-center text-zinc-500 text-sm">
+                    Checking seed eligibility...
+                </div>
+
+                <div x-show="!seedEligibilityLoading" class="px-5 py-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        <div class="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                            <p class="text-[10px] uppercase tracking-wide text-zinc-500">Strict Eligible</p>
+                            <p class="text-lg font-semibold text-emerald-400" x-text="seedEligibility.summary?.eligible_strict ?? 0"></p>
+                        </div>
+                        <div class="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                            <p class="text-[10px] uppercase tracking-wide text-zinc-500">Base Eligible</p>
+                            <p class="text-lg font-semibold text-brand-300" x-text="seedEligibility.summary?.eligible_base ?? 0"></p>
+                        </div>
+                        <div class="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                            <p class="text-[10px] uppercase tracking-wide text-zinc-500">Blocked</p>
+                            <p class="text-lg font-semibold text-red-400" x-text="seedEligibility.summary?.blocked ?? 0"></p>
+                        </div>
+                        <div class="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                            <p class="text-[10px] uppercase tracking-wide text-zinc-500">Cooldown Blocked</p>
+                            <p class="text-lg font-semibold text-amber-400" x-text="seedEligibility.summary?.blocked_cooldown ?? 0"></p>
+                        </div>
+                    </div>
+
+                    <div x-show="!(seedEligibility.seeds || []).length" class="py-4 text-center text-zinc-500 text-sm">
+                        No seed data found.
+                    </div>
+
+                    <div x-show="(seedEligibility.seeds || []).length" class="overflow-x-auto max-h-[320px]">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b border-white/[0.05]">
+                                    <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Seed</th>
+                                    <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Provider</th>
+                                    <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                                    <th class="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Used / Cap</th>
+                                    <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Eligibility</th>
+                                    <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="seed in seedEligibility.seeds" :key="seed.seed_id">
+                                    <tr class="border-b border-white/[0.03] hover:bg-white/[0.02]">
+                                        <td class="px-3 py-2 text-xs text-zinc-200" x-text="seed.seed_email"></td>
+                                        <td class="px-3 py-2 text-xs text-zinc-400" x-text="seed.provider_type || 'other'"></td>
+                                        <td class="px-3 py-2 text-xs text-zinc-400" x-text="seed.status"></td>
+                                        <td class="px-3 py-2 text-xs text-right text-zinc-300" x-text="(seed.used_today ?? 0) + ' / ' + (seed.daily_cap ?? 0)"></td>
+                                        <td class="px-3 py-2">
+                                            <span class="badge px-2 py-0.5 rounded-full text-[10px]"
+                                                  :class="seed.eligible_strict ? 'bg-emerald-500/15 text-emerald-400' : seed.eligible_base ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'"
+                                                  x-text="seed.eligible_strict ? 'strict' : (seed.eligible_base ? 'base only' : 'blocked')"></span>
+                                        </td>
+                                        <td class="px-3 py-2 text-xs text-zinc-400" x-text="formatEligibilityReasons(seed)"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Day-wise planner records -->
             <div class="glass rounded-2xl overflow-hidden mb-5">
                 <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">
@@ -402,6 +470,7 @@ function campaignDetail() {
         loading: true, campaign: {}, report: {}, readiness: {}, events: [], tab: 'overview',
         actChart: null, breakdownChart: null,
         scheduleEvents: [], scheduleLoading: false, scheduleInterval: null, countdownInterval: null,
+        seedEligibility: { date: null, summary: {}, seeds: [] }, seedEligibilityLoading: false,
         serverTimeDiff: 0,
         dailyRecords: [],
         selectedScheduleDate: null,
@@ -543,6 +612,7 @@ function campaignDetail() {
                 if (data.server_time) {
                     this.serverTimeDiff = new Date(data.server_time).getTime() - Date.now();
                 }
+                await this.loadSeedEligibility();
             } catch(e) {
                 showToast('Failed to load schedule: ' + e.message, 'error');
                 this.scheduleEvents = [];
@@ -566,6 +636,38 @@ function campaignDetail() {
                 this.events = [];
                 showToast('Failed to load campaign events: ' + e.message, 'error');
             }
+        },
+
+        async loadSeedEligibility() {
+            this.seedEligibilityLoading = true;
+            try {
+                const date = this.selectedScheduleDate ? `?date=${encodeURIComponent(this.selectedScheduleDate)}` : '';
+                const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}/seed-eligibility${date}`);
+                this.seedEligibility = {
+                    date: data.date || this.selectedScheduleDate || this.todayDateString(),
+                    summary: data.summary || {},
+                    seeds: data.seeds || [],
+                };
+            } catch (e) {
+                this.seedEligibility = { date: null, summary: {}, seeds: [] };
+                showToast('Failed to load seed eligibility: ' + e.message, 'error');
+            }
+            this.seedEligibilityLoading = false;
+        },
+
+        formatEligibilityReasons(seed) {
+            const reasons = seed?.reasons || [];
+            if (!reasons.length) return 'Eligible';
+
+            const labels = {
+                seed_not_active: 'Seed not active',
+                same_domain: 'Same domain as sender',
+                paused: 'Paused by rule',
+                daily_cap_reached: 'Daily cap reached',
+                sender_seed_cooldown: 'Sender-seed cooldown',
+            };
+
+            return reasons.map(r => labels[r] || r.replace(/_/g, ' ')).join(', ');
         },
 
         serverNow() {

@@ -8,6 +8,7 @@ use App\Services\WarmupCampaignService;
 use App\Services\ReportingService;
 use App\Services\ReadinessScoringService;
 use App\Services\DailyPlannerService;
+use App\Services\SeedAllocationService;
 use App\Models\PlannerRun;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ class WarmupCampaignController extends Controller
         private ReportingService $reportingService,
         private ReadinessScoringService $readinessService,
         private DailyPlannerService $plannerService,
+        private SeedAllocationService $seedAllocator,
     ) {}
 
     public function index(): JsonResponse
@@ -239,6 +241,48 @@ class WarmupCampaignController extends Controller
         return response()->json([
             'campaign_id' => $campaign->id,
             'events' => $events,
+        ]);
+    }
+
+    /**
+     * Seed eligibility breakdown for campaign sender/domain.
+     */
+    public function seedEligibility(Request $request, int $id): JsonResponse
+    {
+        $campaign = \App\Models\WarmupCampaign::with([
+            'senderMailbox:id,email_address',
+            'domain:id,domain_name',
+        ])->findOrFail($id);
+
+        if (!$campaign->senderMailbox || !$campaign->domain) {
+            return response()->json([
+                'campaign_id' => $campaign->id,
+                'message' => 'Campaign is missing sender or domain configuration.',
+                'summary' => [
+                    'total' => 0,
+                    'eligible_base' => 0,
+                    'eligible_strict' => 0,
+                    'blocked' => 0,
+                    'blocked_same_domain' => 0,
+                    'blocked_paused' => 0,
+                    'blocked_daily_cap' => 0,
+                    'blocked_cooldown' => 0,
+                ],
+                'seeds' => [],
+            ], 422);
+        }
+
+        $date = $request->query('date');
+        $report = $this->seedAllocator->getEligibilityReport($campaign->senderMailbox, $campaign->domain, $date);
+
+        return response()->json([
+            'campaign_id' => $campaign->id,
+            'campaign_name' => $campaign->campaign_name,
+            'sender_email' => $campaign->senderMailbox->email_address,
+            'domain_name' => $campaign->domain->domain_name,
+            'date' => $report['date'],
+            'summary' => $report['summary'],
+            'seeds' => $report['seeds'],
         ]);
     }
 
