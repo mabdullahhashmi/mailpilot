@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\WarmupCampaign;
 use App\Models\PlannerRun;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class DailyPlannerService
@@ -289,11 +290,7 @@ class DailyPlannerService
                 $seed
             );
 
-            $scheduledAt = $this->randomizer->scheduledTime(
-                $window['start'],
-                $window['end'],
-                $campaign->senderMailbox->timezone
-            );
+            $scheduledAt = $this->pickScheduledAt($campaign, $window);
 
             $event = \App\Models\WarmupEvent::create([
                 'event_type' => 'sender_send_initial',
@@ -344,6 +341,7 @@ class DailyPlannerService
 
             // Ensure within working window
             $scheduledAt = max($scheduledAt, now());
+            $scheduledAt = $this->clampToAcceleratedWindow($campaign, $scheduledAt, $window);
 
             \App\Models\WarmupEvent::create([
                 'event_type' => $eventType,
@@ -365,5 +363,49 @@ class DailyPlannerService
                 $thread->id, 'reply', $scheduledAt
             );
         }
+    }
+
+    private function getDayDurationMinutes(WarmupCampaign $campaign): int
+    {
+        return max(30, min(1440, (int) ($campaign->day_duration_minutes ?? 1440)));
+    }
+
+    private function isAcceleratedMode(WarmupCampaign $campaign): bool
+    {
+        return $this->getDayDurationMinutes($campaign) < 1440;
+    }
+
+    private function pickScheduledAt(WarmupCampaign $campaign, array $window): Carbon
+    {
+        if (!$this->isAcceleratedMode($campaign)) {
+            return $this->randomizer->scheduledTime(
+                $window['start'],
+                $window['end'],
+                $campaign->senderMailbox->timezone
+            );
+        }
+
+        $duration = $this->getDayDurationMinutes($campaign);
+        $startAt = now();
+        $endAt = now()->addMinutes($duration);
+
+        return $this->randomizer->scheduledTimeBetween($startAt, $endAt);
+    }
+
+    private function clampToAcceleratedWindow(WarmupCampaign $campaign, Carbon $scheduledAt, array $window): Carbon
+    {
+        if (!$this->isAcceleratedMode($campaign)) {
+            return $scheduledAt;
+        }
+
+        $duration = $this->getDayDurationMinutes($campaign);
+        $startAt = now();
+        $endAt = now()->addMinutes($duration);
+
+        if ($scheduledAt->lt($startAt) || $scheduledAt->gt($endAt)) {
+            return $this->randomizer->scheduledTimeBetween($startAt, $endAt);
+        }
+
+        return $scheduledAt;
     }
 }

@@ -78,6 +78,37 @@ class RandomizationService
     }
 
     /**
+     * Generate a randomized scheduled time between exact datetime bounds.
+     */
+    public function scheduledTimeBetween(Carbon $startAt, Carbon $endAt): Carbon
+    {
+        $start = $startAt->copy();
+        $end = $endAt->copy();
+
+        if ($end->lte($start)) {
+            return $start->copy()->addSeconds(rand(5, 30));
+        }
+
+        if ($start->isPast()) {
+            $start = now();
+            if ($end->lte($start)) {
+                return $start->copy()->addSeconds(rand(5, 30));
+            }
+        }
+
+        $totalSeconds = max(1, $start->diffInSeconds($end));
+
+        // Triangle distribution - naturally denser in the middle of the window.
+        $u1 = mt_rand() / mt_getrandmax();
+        $u2 = mt_rand() / mt_getrandmax();
+        $biased = ($u1 + $u2) / 2;
+
+        $offsetSeconds = (int) floor($biased * $totalSeconds);
+
+        return $start->copy()->addSeconds($offsetSeconds);
+    }
+
+    /**
      * Randomize working window with slight variation each day.
      * For tight windows (< 30 min), apply minimal or no jitter.
      */
