@@ -118,7 +118,18 @@ class DailyPlannerService
         ]);
 
         // Create new threads and schedule initial events
-        $this->createNewThreadEvents($campaign, $plannerRun, $eligibleSeeds, $newThreadBudget, $workingWindow);
+        $plannedNewThreads = $this->createNewThreadEvents($campaign, $plannerRun, $eligibleSeeds, $newThreadBudget, $workingWindow);
+
+        if ($plannedNewThreads !== $newThreadBudget) {
+            $notes = $plannerRun->notes ?? [];
+            $notes['new_thread_target_requested'] = $newThreadBudget;
+            $notes['new_thread_target_effective'] = $plannedNewThreads;
+
+            $plannerRun->update([
+                'new_thread_target' => $plannedNewThreads,
+                'notes' => $notes,
+            ]);
+        }
 
         // Schedule reply events for continuation threads
         $this->createReplyEvents($campaign, $plannerRun, $continuationThreads, $workingWindow);
@@ -217,8 +228,8 @@ class DailyPlannerService
         \Illuminate\Support\Collection $seeds,
         int $count,
         array $window
-    ): void {
-        if ($count <= 0 || $seeds->isEmpty()) return;
+    ): int {
+        if ($count <= 0 || $seeds->isEmpty()) return 0;
 
         $selectedSeeds = $this->seedAllocator->allocateSeeds(
             $campaign->senderMailbox,
@@ -226,6 +237,12 @@ class DailyPlannerService
             $seeds,
             $count
         );
+
+        if ($selectedSeeds->count() < $count) {
+            Log::warning("DailyPlanner: Campaign #{$campaign->id} requested {$count} new thread(s), allocated {$selectedSeeds->count()} due to seed availability/capacity");
+        }
+
+        $createdCount = 0;
 
         foreach ($selectedSeeds as $seed) {
             $thread = $this->threadService->createThread(
@@ -259,7 +276,11 @@ class DailyPlannerService
                 $campaign, $campaign->sender_mailbox_id, $seed->id,
                 $thread->id, 'initial_send', $scheduledAt, $event->id
             );
+
+            $createdCount++;
         }
+
+        return $createdCount;
     }
 
     private function createReplyEvents(

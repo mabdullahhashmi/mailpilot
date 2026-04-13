@@ -56,6 +56,7 @@ class SeedAllocationService
 
         // Rank by recency/usage and then pick with provider diversity.
         $ranked = $this->rankSeedsForSender($sender, $allocationPool);
+        $remainingCapacity = $this->buildRemainingDailyCapacity($ranked);
         $byProvider = $ranked
             ->groupBy(fn (SeedMailbox $seed) => $seed->provider_type ?: 'other')
             ->map(fn (Collection $group) => $group->values());
@@ -75,14 +76,27 @@ class SeedAllocationService
                     continue;
                 }
 
-                $selected->push($pool->shift());
-                $byProvider[$provider] = $pool;
+                $candidate = $pool->first();
+                if (($remainingCapacity[$candidate->id] ?? 0) <= 0) {
+                    $byProvider[$provider] = $pool->slice(1)->values();
+                    continue;
+                }
+
+                $selected->push($candidate);
+                $remainingCapacity[$candidate->id] = max(0, ($remainingCapacity[$candidate->id] ?? 0) - 1);
+                $byProvider[$provider] = $pool->slice(1)->values();
                 $pickedInRound = true;
             }
 
             if (!$pickedInRound) {
                 break;
             }
+        }
+
+        // If unique seeds are fewer than requested, reuse ranked seeds in a balanced way
+        // so profile targets can still be met while respecting each seed's daily cap.
+        if ($selected->count() < $count) {
+            $selected = $this->topUpWithRepeatSeeds($selected, $ranked, $remainingCapacity, $count);
         }
 
         $selected = $selected->values();
@@ -106,6 +120,81 @@ class SeedAllocationService
                 'per_sender_usage' => $perSender,
                 'per_domain_usage' => $perDomain,
             ]);
+        }
+
+        return $selected;
+    }
+
+    private function buildRemainingDailyCapacity(Collection $seeds): array
+    {
+        $seedIds = $seeds->pluck('id')->values();
+
+        if ($seedIds->isEmpty()) {
+            return [];
+        }
+
+        $todayLogs = SeedUsageLog::whereIn('seed_mailbox_id', $seedIds)
+            ->where('log_date', today())
+            ->get()
+            ->keyBy('seed_mailbox_id');
+
+        $remaining = [];
+
+        foreach ($seeds as $seed) {
+            $dailyCap = (int) ($seed->daily_total_interaction_cap ?? 20);
+            $usedToday = (int) ($todayLogs->get($seed->id)?->interactions_today ?? 0);
+
+            $remaining[$seed->id] = max(0, $dailyCap - $usedToday);
+        }
+
+        return $remaining;
+    }
+
+    private function topUpWithRepeatSeeds(Collection $selected, Collection $ranked, array &$remainingCapacity, int $count): Collection
+    {
+        $reusePool = $ranked
+            ->filter(fn (SeedMailbox $seed) => ($remainingCapacity[$seed->id] ?? 0) > 0)
+            ->values();
+
+        if ($reusePool->isEmpty()) {
+            return $selected;
+        }
+
+        $cursor = 0;
+        $guard = 0;
+        $maxIterations = max($count * 10, 100);
+
+        while ($selected->count() < $count && $reusePool->isNotEmpty() && $guard < $maxIterations) {
+            $seed = $reusePool[$cursor % $reusePool->count()];
+            $remaining = (int) ($remainingCapacity[$seed->id] ?? 0);
+
+            if ($remaining <= 0) {
+                $reusePool = $reusePool
+                    ->reject(fn (SeedMailbox $s) => ($remainingCapacity[$s->id] ?? 0) <= 0)
+                    ->values();
+                $cursor++;
+                $guard++;
+                continue;
+            }
+
+            $last = $selected->last();
+            if ($reusePool->count() > 1 && $last && $last->id === $seed->id) {
+                $cursor++;
+                $guard++;
+                continue;
+            }
+
+            $selected->push($seed);
+            $remainingCapacity[$seed->id] = $remaining - 1;
+
+            if (($remainingCapacity[$seed->id] ?? 0) <= 0) {
+                $reusePool = $reusePool
+                    ->reject(fn (SeedMailbox $s) => $s->id === $seed->id)
+                    ->values();
+            }
+
+            $cursor++;
+            $guard++;
         }
 
         return $selected;
