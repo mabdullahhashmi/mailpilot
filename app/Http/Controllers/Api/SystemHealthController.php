@@ -166,7 +166,7 @@ class SystemHealthController extends Controller
                     $statuses = $allCampaigns->pluck('status')->unique()->implode(', ');
                     $reason = "No active campaigns found. Existing campaign statuses: {$statuses}. Make sure your campaign status is 'active'.";
                 } elseif (!$force) {
-                    $reason = 'All active campaigns already planned today. Use Force Re-Plan to override.';
+                    $reason = 'All active campaigns are already planned for the current warmup day. Use Force Re-Plan to override.';
                 } else {
                     $reason = 'Active campaigns exist but planner created 0 runs. Check Laravel logs for errors (seeds, profile, or safety cap issues).';
                 }

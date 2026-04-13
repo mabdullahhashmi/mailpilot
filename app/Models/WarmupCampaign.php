@@ -11,7 +11,7 @@ class WarmupCampaign extends Model
 {
     protected $fillable = [
         'campaign_name', 'sender_mailbox_id', 'domain_id', 'warmup_profile_id',
-        'start_date', 'planned_duration_days', 'current_day_number',
+        'start_date', 'planned_duration_days', 'day_duration_minutes', 'current_day_number',
         'current_stage', 'status', 'maintenance_mode_enabled',
         'time_window_start', 'time_window_end',
         'completed_at', 'paused_at',
@@ -19,6 +19,7 @@ class WarmupCampaign extends Model
 
     protected $casts = [
         'start_date' => 'date',
+        'day_duration_minutes' => 'integer',
         'maintenance_mode_enabled' => 'boolean',
         'completed_at' => 'datetime',
         'paused_at' => 'datetime',

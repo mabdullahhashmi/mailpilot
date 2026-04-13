@@ -74,6 +74,34 @@ class WarmupSeeder extends Seeder
             'working_hours_end' => '18:00:00',
         ]);
 
+        // Short test profile: 6 warmup days where each day can be treated as 60 minutes
+        WarmupProfile::updateOrCreate(['profile_name' => 'Short Test (6 Hour Days)'], [
+            'description' => 'Testing profile: each warmup day lasts 60 minutes, total 6 warmup days.',
+            'profile_type' => 'custom',
+            'day_rules' => [
+                '1' => ['max_new_threads' => 2,  'max_replies' => 0, 'max_total' => 2],
+                '2' => ['max_new_threads' => 3,  'max_replies' => 2, 'max_total' => 5],
+                '3' => ['max_new_threads' => 5,  'max_replies' => 3, 'max_total' => 8],
+                '4' => ['max_new_threads' => 7,  'max_replies' => 4, 'max_total' => 11],
+                '5' => ['max_new_threads' => 8,  'max_replies' => 5, 'max_total' => 13],
+                '6' => ['max_new_threads' => 10, 'max_replies' => 6, 'max_total' => 16],
+            ],
+            'default_max_new_threads_per_day' => 2,
+            'default_max_reply_actions_per_day' => 2,
+            'default_max_total_actions_per_day' => 4,
+            'thread_length_distribution' => ['3' => 35, '4' => 45, '5' => 20],
+            'reply_delay_distribution' => ['min_minutes' => 2, 'max_minutes' => 20, 'peak_minutes' => 6],
+            'provider_distribution' => ['google' => 50, 'microsoft' => 30, 'other' => 20],
+            'working_hours_start' => '00:00:00',
+            'working_hours_end' => '23:59:00',
+            'anomaly_thresholds' => [
+                'max_spike_pct' => 50,
+                'min_interval_seconds' => 60,
+                'day_duration_minutes' => 60,
+                'is_test_profile' => true,
+            ],
+        ]);
+
         // Conservative profile: 20-day slow warmup
         WarmupProfile::updateOrCreate(['profile_name' => 'Conservative (20 Day)'], [
             'description' => 'Slow and steady 20-day warmup for sensitive domains.',

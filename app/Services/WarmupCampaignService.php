@@ -24,6 +24,7 @@ class WarmupCampaignService
             'warmup_profile_id' => $profile->id,
             'start_date' => today(),
             'planned_duration_days' => $duration,
+            'day_duration_minutes' => $this->resolveDayDurationMinutes($profile),
             'current_day_number' => 1,
             'current_stage' => 'initial_trust',
             'status' => 'active',
@@ -124,5 +125,14 @@ class WarmupCampaignService
         return WarmupCampaign::where('status', 'active')
             ->with(['senderMailbox', 'domain', 'profile'])
             ->get();
+    }
+
+    private function resolveDayDurationMinutes(WarmupProfile $profile): int
+    {
+        $thresholds = is_array($profile->anomaly_thresholds) ? $profile->anomaly_thresholds : [];
+        $minutes = (int) ($thresholds['day_duration_minutes'] ?? 1440);
+
+        // Keep a safe range for scheduler/planner behavior.
+        return max(30, min(1440, $minutes));
     }
 }

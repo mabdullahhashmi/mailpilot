@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\WarmupCampaign;
 use App\Models\PlannerRun;
-use App\Models\SeedMailbox;
-use App\Models\SeedUsageLog;
 use Illuminate\Support\Facades\Log;
 
 class DailyPlannerService
@@ -151,57 +149,65 @@ class DailyPlannerService
         Log::info("DailyPlanner: Found {$campaigns->count()} active campaign(s)");
 
         foreach ($campaigns as $campaign) {
-            // Skip if already planned today (unless forced)
-            if (!$force) {
-                $alreadyPlanned = PlannerRun::where('warmup_campaign_id', $campaign->id)
-                    ->where('plan_date', today())
-                    ->exists();
-
-                if ($alreadyPlanned) {
-                    Log::info("DailyPlanner: Skipping campaign #{$campaign->id} — already planned today. Use force=true to override.");
-                    continue;
-                }
-            } else {
-                // Force: delete today's existing plan runs AND their events and threads
-                $existingRuns = PlannerRun::where('warmup_campaign_id', $campaign->id)
-                    ->where('plan_date', today())
-                    ->pluck('id');
-
-                if ($existingRuns->isNotEmpty()) {
-                    // Delete events created by these plan runs
-                    $eventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
-                        ->whereDate('created_at', today())
-                        ->whereIn('status', ['pending', 'locked', 'final_failed', 'executing'])
-                        ->pluck('id');
-
-                    // Delete associated send slots
-                    \App\Models\SendSlot::whereIn('warmup_event_id', $eventIds)->delete();
-
-                    // Delete the pending events
-                    \App\Models\WarmupEvent::whereIn('id', $eventIds)->delete();
-
-                    // Delete threads created today that have no completed events
-                    $orphanThreadIds = \App\Models\Thread::where('warmup_campaign_id', $campaign->id)
-                        ->whereDate('created_at', today())
-                        ->whereDoesntHave('events', function ($q) {
-                            $q->where('status', 'completed');
-                        })
-                        ->pluck('id');
-                    \App\Models\ThreadMessage::whereIn('thread_id', $orphanThreadIds)->delete();
-                    \App\Models\Thread::whereIn('id', $orphanThreadIds)->delete();
-
-                    // Delete the plan runs
-                    PlannerRun::whereIn('id', $existingRuns)->delete();
-
-                    Log::info("DailyPlanner: Force cleaned campaign #{$campaign->id}: deleted " . count($existingRuns) . " plan runs, " . count($eventIds) . " events, " . count($orphanThreadIds) . " orphan threads");
-                }
-            }
-
             try {
-                // Advance day if needed
-                if ($campaign->start_date->diffInDays(today()) + 1 > $campaign->current_day_number) {
-                    $this->campaignService->advanceDay($campaign);
-                    $campaign->refresh();
+                // Advance day using campaign day-duration (24h default, 60m for test profile).
+                $targetDay = $this->resolveTargetDayNumber($campaign);
+                $this->advanceCampaignToDay($campaign, $targetDay);
+
+                // Skip if already planned for the current warmup day (unless forced).
+                if (!$force) {
+                    $alreadyPlanned = PlannerRun::where('warmup_campaign_id', $campaign->id)
+                        ->where('warmup_day_number', $campaign->current_day_number)
+                        ->exists();
+
+                    if ($alreadyPlanned) {
+                        Log::info("DailyPlanner: Skipping campaign #{$campaign->id} — already planned for warmup day #{$campaign->current_day_number}. Use force=true to override.");
+                        continue;
+                    }
+                } else {
+                    // Force: clean the current warmup day's plan run(s) and linked events/threads.
+                    $existingRuns = PlannerRun::where('warmup_campaign_id', $campaign->id)
+                        ->where('warmup_day_number', $campaign->current_day_number)
+                        ->pluck('id');
+
+                    if ($existingRuns->isNotEmpty()) {
+                        $eventQuery = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
+                            ->whereIn('status', ['pending', 'locked', 'final_failed', 'executing'])
+                            ->where(function ($q) use ($existingRuns) {
+                                foreach ($existingRuns as $runId) {
+                                    $q->orWhere('payload->planner_run_id', (int) $runId);
+                                }
+                            });
+
+                        $eventIds = $eventQuery->pluck('id');
+
+                        // Delete associated send slots
+                        \App\Models\SendSlot::whereIn('warmup_event_id', $eventIds)->delete();
+
+                        // Gather affected threads before deleting events
+                        $affectedThreadIds = \App\Models\WarmupEvent::whereIn('id', $eventIds)
+                            ->whereNotNull('thread_id')
+                            ->pluck('thread_id')
+                            ->unique();
+
+                        // Delete the events
+                        \App\Models\WarmupEvent::whereIn('id', $eventIds)->delete();
+
+                        // Delete affected threads only if they have no completed events.
+                        $orphanThreadIds = \App\Models\Thread::whereIn('id', $affectedThreadIds)
+                            ->whereDoesntHave('events', function ($q) {
+                                $q->where('status', 'completed');
+                            })
+                            ->pluck('id');
+
+                        \App\Models\ThreadMessage::whereIn('thread_id', $orphanThreadIds)->delete();
+                        \App\Models\Thread::whereIn('id', $orphanThreadIds)->delete();
+
+                        // Delete the run rows
+                        PlannerRun::whereIn('id', $existingRuns)->delete();
+
+                        Log::info("DailyPlanner: Force cleaned campaign #{$campaign->id} day #{$campaign->current_day_number}: deleted " . count($existingRuns) . " plan runs, " . count($eventIds) . " events, " . count($orphanThreadIds) . " orphan threads");
+                    }
                 }
 
                 $runs[] = $this->planDay($campaign);
@@ -220,6 +226,38 @@ class DailyPlannerService
         }
 
         return $runs;
+    }
+
+    private function resolveTargetDayNumber(WarmupCampaign $campaign): int
+    {
+        $dayDurationMinutes = (int) ($campaign->day_duration_minutes ?? 1440);
+        $dayDurationMinutes = max(30, min(1440, $dayDurationMinutes));
+        $planned = max(1, (int) ($campaign->planned_duration_days ?? 1));
+
+        if ($dayDurationMinutes >= 1440) {
+            $target = (int) ($campaign->start_date?->diffInDays(today()) + 1);
+        } else {
+            $startedAt = $campaign->created_at ?? now();
+            $elapsedMinutes = (int) $startedAt->diffInMinutes(now());
+            $target = intdiv($elapsedMinutes, $dayDurationMinutes) + 1;
+        }
+
+        // Allow one step above planned duration so maintenance transition can happen.
+        return max(1, min($planned + 1, $target));
+    }
+
+    private function advanceCampaignToDay(WarmupCampaign $campaign, int $targetDay): void
+    {
+        if ($targetDay <= $campaign->current_day_number) {
+            return;
+        }
+
+        $guard = 0;
+        while ($campaign->current_day_number < $targetDay && $guard < 200) {
+            $this->campaignService->advanceDay($campaign);
+            $campaign->refresh();
+            $guard++;
+        }
     }
 
     private function createNewThreadEvents(
