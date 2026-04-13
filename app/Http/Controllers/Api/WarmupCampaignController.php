@@ -69,13 +69,13 @@ class WarmupCampaignController extends Controller
     public function show(int $id): JsonResponse
     {
         $campaign = \App\Models\WarmupCampaign::with([
-            'senderMailbox:id,email_address,provider,status,current_warmup_day,daily_send_cap',
+            'senderMailbox:id,email_address,provider_type,status,current_warmup_day,daily_send_cap',
             'domain:id,domain_name',
             'profile:id,profile_name,day_rules,profile_type',
             'threads' => function ($q) {
                 $q->with([
-                    'seedMailbox:id,email_address,provider,status',
-                    'senderMailbox:id,email_address,provider,status',
+                    'seedMailbox:id,email_address,provider_type,status',
+                    'senderMailbox:id,email_address,provider_type,status',
                 ])->orderByDesc('created_at');
             },
         ])
