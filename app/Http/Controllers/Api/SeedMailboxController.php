@@ -54,7 +54,7 @@ class SeedMailboxController extends Controller
 
         $threads = \App\Models\Thread::where('seed_mailbox_id', $seed->id)
             ->with([
-                'senderMailbox:id,email_address,provider,status',
+                'senderMailbox:id,email_address,provider_type,status',
                 'warmupCampaign:id,campaign_name,current_day_number,current_stage,status',
                 'messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id'),
             ])
@@ -112,7 +112,7 @@ class SeedMailboxController extends Controller
                 return [
                     'sender_mailbox_id' => $sender?->id,
                     'sender_email' => $sender?->email_address,
-                    'sender_provider' => $sender?->provider,
+                    'sender_provider' => $sender?->provider_type,
                     'sender_status' => $sender?->status,
                     'threads_count' => $senderThreads->count(),
                     'active_threads' => $senderThreads->whereIn('thread_status', ['planned', 'active', 'closing'])->count(),
