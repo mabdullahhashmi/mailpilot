@@ -47,6 +47,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('sender-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SenderMailboxController::class, 'resume']);
 
     // Seed Mailboxes
+    Route::get('seed-mailboxes/{id}/history', [\App\Http\Controllers\Api\SeedMailboxController::class, 'history']);
     Route::apiResource('seed-mailboxes', \App\Http\Controllers\Api\SeedMailboxController::class);
     Route::post('seed-mailboxes/{id}/pause', [\App\Http\Controllers\Api\SeedMailboxController::class, 'pause']);
     Route::post('seed-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SeedMailboxController::class, 'resume']);
@@ -68,6 +69,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('campaigns/{id}/restart', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'restart']);
     Route::get('campaigns/{id}/report', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'report']);
     Route::get('campaigns/{id}/schedule', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'schedule']);
+    Route::get('campaigns/{id}/events', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'events']);
 
     // Flow Test (isolated from daily warmup quota)
     Route::get('flow-tests/meta', [\App\Http\Controllers\Api\FlowTestController::class, 'meta']);

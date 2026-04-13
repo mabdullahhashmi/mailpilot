@@ -43,14 +43,14 @@
                     <div class="w-9 h-9 rounded-lg gradient-success flex items-center justify-center"><i data-lucide="check-circle" class="w-4 h-4 text-white"></i></div>
                     <span class="text-zinc-500 text-xs font-medium">Completed</span>
                 </div>
-                <p class="text-2xl font-bold text-emerald-400" x-text="report.completed ?? 0"></p>
+                <p class="text-2xl font-bold text-emerald-400" x-text="report.completed_events ?? 0"></p>
             </div>
             <div class="stat-card glass rounded-2xl p-4">
                 <div class="flex items-center gap-3 mb-2">
                     <div class="w-9 h-9 rounded-lg gradient-danger flex items-center justify-center"><i data-lucide="alert-triangle" class="w-4 h-4 text-white"></i></div>
                     <span class="text-zinc-500 text-xs font-medium">Failed</span>
                 </div>
-                <p class="text-2xl font-bold text-red-400" x-text="report.failed ?? 0"></p>
+                <p class="text-2xl font-bold text-red-400" x-text="report.failed_events ?? 0"></p>
             </div>
             <div class="stat-card glass rounded-2xl p-4">
                 <div class="flex items-center gap-3 mb-2">
@@ -64,7 +64,7 @@
         <!-- Tabs -->
         <div class="flex gap-1 mb-6 border-b border-white/5 pb-px">
             <template x-for="t in ['overview','schedule','threads','events']" :key="t">
-                <button @click="tab = t; if(t === 'schedule') loadSchedule();" class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition"
+                <button @click="tab = t; if(t === 'schedule') loadSchedule(); if(t === 'events') loadEvents();" class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition"
                         :class="tab === t ? 'text-white bg-white/5 border-b-2 border-brand-500' : 'text-zinc-500 hover:text-zinc-300'"
                         x-text="t.charAt(0).toUpperCase() + t.slice(1)"></button>
             </template>
@@ -96,12 +96,12 @@
                         <div class="flex items-center justify-between py-2 border-b border-white/5">
                             <span class="text-zinc-500 text-sm">Current Stage</span>
                             <span class="badge px-2 py-0.5 rounded-full text-[10px]"
-                                  :class="campaign.current_stage === 'ramp_up' ? 'bg-brand-500/15 text-brand-400' : campaign.current_stage === 'plateau' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
+                                  :class="stageBadge(campaign.current_stage)"
                                   x-text="(campaign.current_stage || '—').replace('_',' ')"></span>
                         </div>
                         <div class="flex items-center justify-between py-2 border-b border-white/5">
                             <span class="text-zinc-500 text-sm">Day</span>
-                            <span class="text-white text-sm font-medium" x-text="(campaign.current_day_number || 1) + ' / ' + (campaign.profile?.total_days || '—')"></span>
+                            <span class="text-white text-sm font-medium" x-text="(campaign.current_day_number || 1) + ' / ' + profileTotalDays()"></span>
                         </div>
                         <div class="flex items-center justify-between py-2 border-b border-white/5">
                             <span class="text-zinc-500 text-sm">Time Window</span>
@@ -109,11 +109,11 @@
                         </div>
                         <div class="flex items-center justify-between py-2 border-b border-white/5">
                             <span class="text-zinc-500 text-sm">Threads</span>
-                            <span class="text-white text-sm font-medium" x-text="report.threads ?? 0"></span>
+                            <span class="text-white text-sm font-medium" x-text="report.total_threads ?? 0"></span>
                         </div>
                         <div class="flex items-center justify-between py-2">
                             <span class="text-zinc-500 text-sm">Pending Events</span>
-                            <span class="text-amber-400 text-sm font-medium" x-text="report.pending ?? 0"></span>
+                            <span class="text-amber-400 text-sm font-medium" x-text="report.pending_events ?? 0"></span>
                         </div>
                     </div>
                 </div>
@@ -159,12 +159,69 @@
         <div x-show="tab === 'schedule'">
             <div class="flex items-center justify-between mb-4">
                 <div>
-                    <h4 class="text-white font-semibold text-sm">Today's Schedule</h4>
-                    <p class="text-zinc-500 text-xs mt-0.5">Exact send/reply times with live countdowns. Refreshes every 30s.</p>
+                    <h4 class="text-white font-semibold text-sm">Schedule Timeline</h4>
+                    <p class="text-zinc-500 text-xs mt-0.5">Exact send/reply times with live countdowns. Pick a campaign day/date below.</p>
                 </div>
-                <button @click="loadSchedule()" class="px-3 py-1.5 rounded-lg text-xs font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition flex items-center gap-1.5">
-                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh
-                </button>
+                <div class="flex items-center gap-2">
+                    <select x-model="selectedScheduleDate" @change="loadSchedule(); loadEvents();" class="input-dark px-3 py-1.5 rounded-lg text-xs text-white">
+                        <option :value="todayDateString()">Today</option>
+                        <template x-for="rec in dailyRecords" :key="rec.id">
+                            <option :value="rec.plan_date" x-text="'Day ' + rec.warmup_day_number + ' - ' + rec.plan_date"></option>
+                        </template>
+                    </select>
+                    <button @click="loadSchedule()" class="px-3 py-1.5 rounded-lg text-xs font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition flex items-center gap-1.5">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Day-wise planner records -->
+            <div class="glass rounded-2xl overflow-hidden mb-5">
+                <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                    <h5 class="text-white text-sm font-semibold">Daily Plan Records</h5>
+                    <span class="text-zinc-500 text-[11px]" x-text="dailyRecords.length + ' day record(s)'"></span>
+                </div>
+
+                <div x-show="dailyRecords.length === 0" class="px-5 py-8 text-center text-zinc-500 text-sm">
+                    No day records yet. Run planner to create day-by-day planning history.
+                </div>
+
+                <div x-show="dailyRecords.length > 0" class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-white/[0.05]">
+                                <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Day</th>
+                                <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Date</th>
+                                <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Stage</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">New</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Replies</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Sender Actions</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Total Budget</th>
+                                <th class="text-right px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Eligible Seeds</th>
+                                <th class="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="rec in dailyRecords" :key="rec.id">
+                                <tr class="border-b border-white/[0.03] hover:bg-white/[0.02] cursor-pointer" @click="selectedScheduleDate = rec.plan_date; loadSchedule(); loadEvents();">
+                                    <td class="px-5 py-3 text-sm text-white font-medium" x-text="'Day ' + rec.warmup_day_number"></td>
+                                    <td class="px-5 py-3 text-sm text-zinc-300" x-text="rec.plan_date"></td>
+                                    <td class="px-5 py-3 text-sm text-zinc-400" x-text="(rec.warmup_stage || '—').replace('_',' ')"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.new_thread_target"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.reply_target"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-brand-300 font-semibold" x-text="rec.planned_sender_actions"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-zinc-300" x-text="rec.total_action_budget"></td>
+                                    <td class="px-5 py-3 text-sm text-right text-zinc-400" x-text="rec.eligible_seed_count"></td>
+                                    <td class="px-5 py-3">
+                                        <span class="badge px-2 py-0.5 rounded-full text-[10px]"
+                                              :class="rec.status === 'executing' ? 'bg-brand-500/15 text-brand-400' : rec.status === 'planned' ? 'bg-amber-500/15 text-amber-400' : rec.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-500/15 text-zinc-400'"
+                                              x-text="rec.status"></span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div x-show="scheduleLoading" class="text-center py-12">
@@ -271,14 +328,14 @@
                         <template x-for="th in campaign.threads || []" :key="th.id">
                             <tr class="table-row border-b border-white/[0.03]">
                                 <td class="px-5 py-3 text-sm text-white font-medium" x-text="'#' + th.id"></td>
-                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="th.seed_mailbox?.email_address || '—'"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="th.seed_mailbox?.email_address || th.seedMailbox?.email_address || '—'"></td>
                                 <td class="px-5 py-3">
                                     <span class="badge px-2 py-0.5 rounded-full text-[10px]"
-                                          :class="th.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : th.status === 'completed' ? 'bg-brand-500/15 text-brand-400' : 'bg-zinc-500/15 text-zinc-400'"
-                                          x-text="th.status"></span>
+                                          :class="th.thread_status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : th.thread_status === 'closed' ? 'bg-brand-500/15 text-brand-400' : th.thread_status === 'closing' ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-500/15 text-zinc-400'"
+                                          x-text="th.thread_status"></span>
                                 </td>
                                 <td class="px-5 py-3 text-sm text-zinc-400" x-text="(th.actual_message_count || 0) + ' / ' + (th.planned_message_count || '—')"></td>
-                                <td class="px-5 py-3 text-sm text-zinc-400 truncate max-w-[180px]" x-text="th.subject || '—'"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-400 truncate max-w-[180px]" x-text="th.subject_line || '—'"></td>
                                 <td class="px-5 py-3 text-sm text-zinc-500" x-text="new Date(th.created_at).toLocaleDateString()"></td>
                             </tr>
                         </template>
@@ -299,6 +356,8 @@
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">ID</th>
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Type</th>
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                            <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Sender → Seed</th>
+                            <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Subject</th>
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Scheduled</th>
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Executed</th>
                             <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Error</th>
@@ -310,17 +369,19 @@
                                 <td class="px-5 py-3 text-sm text-white font-medium" x-text="'#' + ev.id"></td>
                                 <td class="px-5 py-3">
                                     <span class="badge px-2 py-0.5 rounded-full text-[10px]"
-                                          :class="ev.event_type === 'send_initial' ? 'bg-brand-500/15 text-brand-400' : ev.event_type === 'send_reply' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
+                                          :class="eventTypeBadge(ev.event_type)"
                                           x-text="(ev.event_type || '').replace(/_/g,' ')"></span>
                                 </td>
                                 <td class="px-5 py-3">
                                     <span class="badge px-2 py-0.5 rounded-full text-[10px]"
-                                          :class="ev.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : ev.status === 'failed' ? 'bg-red-500/15 text-red-400' : ev.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-500/15 text-zinc-400'"
+                                          :class="ev.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : ev.status === 'final_failed' || ev.status === 'failed' ? 'bg-red-500/15 text-red-400' : ev.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : ev.status === 'executing' ? 'bg-brand-500/15 text-brand-400' : 'bg-zinc-500/15 text-zinc-400'"
                                           x-text="ev.status"></span>
                                 </td>
+                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="(ev.sender_email || '—') + ' → ' + (ev.seed_email || '—')"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-400 truncate max-w-[220px]" x-text="ev.subject || '—'"></td>
                                 <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.scheduled_at ? new Date(ev.scheduled_at).toLocaleString() : '—'"></td>
                                 <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.executed_at ? new Date(ev.executed_at).toLocaleString() : '—'"></td>
-                                <td class="px-5 py-3 text-sm text-red-400/80 truncate max-w-[200px]" x-text="ev.error_message || '—'"></td>
+                                <td class="px-5 py-3 text-sm text-red-400/80 truncate max-w-[200px]" x-text="ev.failure_reason || '—'"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -342,6 +403,8 @@ function campaignDetail() {
         actChart: null, breakdownChart: null,
         scheduleEvents: [], scheduleLoading: false, scheduleInterval: null, countdownInterval: null,
         serverTimeDiff: 0,
+        dailyRecords: [],
+        selectedScheduleDate: null,
 
         get campaignId() {
             return window.location.pathname.split('/').filter(Boolean).pop();
@@ -351,18 +414,52 @@ function campaignDetail() {
             return { active: 'bg-emerald-500/15 text-emerald-400', paused: 'bg-amber-500/15 text-amber-400', draft: 'bg-zinc-500/15 text-zinc-400', stopped: 'bg-red-500/15 text-red-400', completed: 'bg-brand-500/15 text-brand-400' }[s] || 'bg-zinc-500/15 text-zinc-400';
         },
 
+        stageBadge(stage) {
+            const map = {
+                ramp_up: 'bg-brand-500/15 text-brand-400',
+                plateau: 'bg-emerald-500/15 text-emerald-400',
+                maintenance: 'bg-amber-500/15 text-amber-400',
+                initial_trust: 'bg-brand-500/15 text-brand-400',
+                controlled_expansion: 'bg-blue-500/15 text-blue-400',
+                behavioral_maturity: 'bg-emerald-500/15 text-emerald-400',
+                readiness: 'bg-amber-500/15 text-amber-400',
+            };
+            return map[stage] || 'bg-zinc-500/15 text-zinc-400';
+        },
+
+        profileTotalDays() {
+            const dr = this.campaign?.profile?.day_rules || {};
+            const count = Object.keys(dr).length;
+            return count || this.campaign?.planned_duration_days || '—';
+        },
+
+        todayDateString() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        },
+
+        eventTypeBadge(type) {
+            if (type === 'sender_send_initial' || type === 'sender_reply') return 'bg-brand-500/15 text-brand-400';
+            if (type === 'seed_open_email' || type === 'seed_reply') return 'bg-emerald-500/15 text-emerald-400';
+            if (type === 'thread_close') return 'bg-zinc-500/15 text-zinc-400';
+            return 'bg-amber-500/15 text-amber-400';
+        },
+
         async init() {
             try {
                 const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}`);
                 this.campaign = data.campaign || {};
                 this.report = data.report || {};
                 this.readiness = data.readiness || {};
+                this.dailyRecords = data.daily_records || [];
 
-                // Load events from event-logs filtered by campaign
-                try {
-                    const logData = await apiCall(`/api/warmup/event-logs?campaign_id=${this.campaignId}`);
-                    this.events = Array.isArray(logData) ? logData : (logData.data || []);
-                } catch(e) { this.events = []; }
+                const defaultDate = this.dailyRecords?.[0]?.plan_date || this.todayDateString();
+                this.selectedScheduleDate = defaultDate;
+
+                await this.loadEvents();
 
             } catch(e) { showToast('Failed to load campaign: ' + e.message, 'error'); }
             this.loading = false;
@@ -439,7 +536,8 @@ function campaignDetail() {
         async loadSchedule() {
             this.scheduleLoading = true;
             try {
-                const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}/schedule`);
+                const date = this.selectedScheduleDate ? `?date=${encodeURIComponent(this.selectedScheduleDate)}` : '';
+                const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}/schedule${date}`);
                 this.scheduleEvents = data.events || [];
                 // Sync server time offset for accurate countdowns
                 if (data.server_time) {
@@ -457,6 +555,17 @@ function campaignDetail() {
             this.scheduleInterval = setInterval(() => {
                 if (this.tab === 'schedule') this.loadSchedule();
             }, 30000);
+        },
+
+        async loadEvents() {
+            try {
+                const date = this.selectedScheduleDate ? `?date=${encodeURIComponent(this.selectedScheduleDate)}` : '';
+                const data = await apiCall(`/api/warmup/campaigns/${this.campaignId}/events${date}`);
+                this.events = data.events || [];
+            } catch (e) {
+                this.events = [];
+                showToast('Failed to load campaign events: ' + e.message, 'error');
+            }
         },
 
         serverNow() {

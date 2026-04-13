@@ -33,8 +33,7 @@ class SeedAllocationService
             })
             ->get()
             ->filter(function (SeedMailbox $seed) use ($sender) {
-                return $this->hasNotExceededDailyCap($seed)
-                    && $this->respectsPairCooldown($sender, $seed);
+                return $this->hasNotExceededDailyCap($seed);
             });
     }
 
@@ -43,35 +42,50 @@ class SeedAllocationService
      */
     public function allocateSeeds(SenderMailbox $sender, Domain $domain, Collection $eligibleSeeds, int $count): Collection
     {
-        if ($eligibleSeeds->count() <= $count) {
-            return $eligibleSeeds;
+        if ($count <= 0 || $eligibleSeeds->isEmpty()) {
+            return collect();
         }
 
-        // Group by provider
-        $byProvider = $eligibleSeeds->groupBy('provider_type');
+        // Strict anti-repeat pool first (avoid same sender-seed pairing in cooldown window).
+        $strictPool = $eligibleSeeds
+            ->filter(fn (SeedMailbox $seed) => $this->respectsPairCooldown($sender, $seed))
+            ->values();
+
+        // If strict pool is too small, gracefully fallback to all eligible seeds.
+        $allocationPool = $strictPool->count() >= $count ? $strictPool : $eligibleSeeds->values();
+
+        // Rank by recency/usage and then pick with provider diversity.
+        $ranked = $this->rankSeedsForSender($sender, $allocationPool);
+        $byProvider = $ranked
+            ->groupBy(fn (SeedMailbox $seed) => $seed->provider_type ?: 'other')
+            ->map(fn (Collection $group) => $group->values());
 
         $selected = collect();
-        $remaining = $count;
 
-        // Distribute across providers proportionally
-        $providerCount = $byProvider->count();
-        $perProvider = max(1, intdiv($count, $providerCount));
+        // Round-robin across providers to avoid overusing one provider's seeds.
+        while ($selected->count() < $count) {
+            $pickedInRound = false;
 
-        foreach ($byProvider as $provider => $seeds) {
-            $take = min($perProvider, $remaining, $seeds->count());
-            $picked = $seeds->shuffle()->take($take);
-            $selected = $selected->merge($picked);
-            $remaining -= $take;
+            foreach ($byProvider as $provider => $pool) {
+                if ($selected->count() >= $count) {
+                    break;
+                }
 
-            if ($remaining <= 0) break;
+                if ($pool->isEmpty()) {
+                    continue;
+                }
+
+                $selected->push($pool->shift());
+                $byProvider[$provider] = $pool;
+                $pickedInRound = true;
+            }
+
+            if (!$pickedInRound) {
+                break;
+            }
         }
 
-        // Fill remainder from any remaining seeds
-        if ($remaining > 0) {
-            $usedIds = $selected->pluck('id');
-            $leftover = $eligibleSeeds->whereNotIn('id', $usedIds)->shuffle()->take($remaining);
-            $selected = $selected->merge($leftover);
-        }
+        $selected = $selected->values();
 
         // Log usage (updateOrCreate since unique constraint on [seed_mailbox_id, log_date])
         foreach ($selected as $seed) {
@@ -97,6 +111,80 @@ class SeedAllocationService
         return $selected;
     }
 
+    private function rankSeedsForSender(SenderMailbox $sender, Collection $seeds): Collection
+    {
+        $seedIds = $seeds->pluck('id')->values();
+        if ($seedIds->isEmpty()) {
+            return collect();
+        }
+
+        $recentLogs = SeedUsageLog::whereIn('seed_mailbox_id', $seedIds)
+            ->where('log_date', '>=', today()->subDays(14))
+            ->orderByDesc('log_date')
+            ->get()
+            ->groupBy('seed_mailbox_id');
+
+        $metrics = [];
+
+        foreach ($seeds as $seed) {
+            $logs = $recentLogs->get($seed->id, collect());
+
+            $lastUsedBySenderDays = null;
+            $interactionsToday = 0;
+            $interactions14d = 0;
+
+            foreach ($logs as $log) {
+                $interactions14d += (int) ($log->interactions_today ?? 0);
+
+                if ($log->log_date && $log->log_date->isToday()) {
+                    $interactionsToday = (int) ($log->interactions_today ?? 0);
+                }
+
+                $perSender = $log->per_sender_usage ?? [];
+                $senderUsage = (int) ($perSender[$sender->id] ?? $perSender[(string) $sender->id] ?? 0);
+
+                if ($senderUsage > 0 && $log->log_date) {
+                    $daysAgo = (int) $log->log_date->diffInDays(today());
+                    $lastUsedBySenderDays = $lastUsedBySenderDays === null
+                        ? $daysAgo
+                        : min($lastUsedBySenderDays, $daysAgo);
+                }
+            }
+
+            $metrics[$seed->id] = [
+                'never_used_by_sender' => $lastUsedBySenderDays === null,
+                'last_used_by_sender_days' => $lastUsedBySenderDays ?? -1,
+                'interactions_today' => $interactionsToday,
+                'interactions_14d' => $interactions14d,
+            ];
+        }
+
+        return $seeds->sort(function (SeedMailbox $a, SeedMailbox $b) use ($metrics) {
+            $ma = $metrics[$a->id] ?? [];
+            $mb = $metrics[$b->id] ?? [];
+
+            // Prefer seeds this sender has never used.
+            if (($ma['never_used_by_sender'] ?? false) !== ($mb['never_used_by_sender'] ?? false)) {
+                return ($mb['never_used_by_sender'] ?? false) <=> ($ma['never_used_by_sender'] ?? false);
+            }
+
+            // Then prefer seeds used longest ago by this sender.
+            if (($ma['last_used_by_sender_days'] ?? -1) !== ($mb['last_used_by_sender_days'] ?? -1)) {
+                return ($mb['last_used_by_sender_days'] ?? -1) <=> ($ma['last_used_by_sender_days'] ?? -1);
+            }
+
+            // Then prefer less-loaded seeds today and in the past 14 days.
+            if (($ma['interactions_today'] ?? 0) !== ($mb['interactions_today'] ?? 0)) {
+                return ($ma['interactions_today'] ?? 0) <=> ($mb['interactions_today'] ?? 0);
+            }
+            if (($ma['interactions_14d'] ?? 0) !== ($mb['interactions_14d'] ?? 0)) {
+                return ($ma['interactions_14d'] ?? 0) <=> ($mb['interactions_14d'] ?? 0);
+            }
+
+            return $a->id <=> $b->id;
+        })->values();
+    }
+
     private function hasNotExceededDailyCap(SeedMailbox $seed): bool
     {
         $dailyCap = $seed->daily_total_interaction_cap ?? 20;
@@ -112,7 +200,7 @@ class SeedAllocationService
 
     private function respectsPairCooldown(SenderMailbox $sender, SeedMailbox $seed): bool
     {
-        $cooldownDays = 2;
+        $cooldownDays = 3;
 
         // Check if this sender appeared in recent per_sender_usage
         $recentLogs = SeedUsageLog::where('seed_mailbox_id', $seed->id)
@@ -121,9 +209,20 @@ class SeedAllocationService
 
         foreach ($recentLogs as $log) {
             $perSender = $log->per_sender_usage ?? [];
-            if (isset($perSender[$sender->id]) && $perSender[$sender->id] > 0) {
+            $usage = (int) ($perSender[$sender->id] ?? $perSender[(string) $sender->id] ?? 0);
+            if ($usage > 0) {
                 return false;
             }
+        }
+
+        // Fallback guard: if logs are incomplete, still avoid repeating same pair too soon.
+        $recentPairThreadExists = \App\Models\Thread::where('sender_mailbox_id', $sender->id)
+            ->where('seed_mailbox_id', $seed->id)
+            ->whereDate('created_at', '>=', today()->subDays($cooldownDays))
+            ->exists();
+
+        if ($recentPairThreadExists) {
+            return false;
         }
 
         return true;

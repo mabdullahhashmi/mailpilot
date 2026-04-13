@@ -8,6 +8,7 @@ use App\Services\WarmupCampaignService;
 use App\Services\ReportingService;
 use App\Services\ReadinessScoringService;
 use App\Services\DailyPlannerService;
+use App\Models\PlannerRun;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -67,16 +68,28 @@ class WarmupCampaignController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $campaign = \App\Models\WarmupCampaign::with(['senderMailbox', 'domain', 'profile', 'threads'])
+        $campaign = \App\Models\WarmupCampaign::with([
+            'senderMailbox:id,email_address,provider,status,current_warmup_day,daily_send_cap',
+            'domain:id,domain_name',
+            'profile:id,profile_name,day_rules,profile_type',
+            'threads' => function ($q) {
+                $q->with([
+                    'seedMailbox:id,email_address,provider,status',
+                    'senderMailbox:id,email_address,provider,status',
+                ])->orderByDesc('created_at');
+            },
+        ])
             ->findOrFail($id);
 
         $report = $this->reportingService->campaignReport($campaign);
         $readiness = $this->readinessService->getReadinessSummary($campaign->senderMailbox);
+        $dailyRecords = $this->buildDailyRecords($campaign->id);
 
         return response()->json([
             'campaign' => $campaign,
             'report' => $report,
             'readiness' => $readiness,
+            'daily_records' => $dailyRecords,
         ]);
     }
 
@@ -131,18 +144,32 @@ class WarmupCampaignController extends Controller
     /**
      * Get scheduled timeline for a campaign — all events with times and countdowns.
      */
-    public function schedule(int $id): JsonResponse
+    public function schedule(Request $request, int $id): JsonResponse
     {
         $campaign = \App\Models\WarmupCampaign::findOrFail($id);
+        $selectedDate = $request->query('date');
+        $date = $selectedDate ? \Carbon\Carbon::parse($selectedDate)->toDateString() : today()->toDateString();
 
         $events = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
-            ->whereDate('scheduled_at', today())
+            ->whereDate('scheduled_at', $date)
             ->orderBy('scheduled_at')
             ->with(['thread.senderMailbox', 'thread.seedMailbox'])
-            ->get()
-            ->map(function ($event) {
+            ->get();
+
+        $plannerRunIds = $events
+            ->pluck('payload')
+            ->filter(fn($p) => is_array($p) && isset($p['planner_run_id']))
+            ->map(fn($p) => (int) $p['planner_run_id'])
+            ->unique()
+            ->values();
+
+        $runsById = PlannerRun::whereIn('id', $plannerRunIds)->get()->keyBy('id');
+
+        $events = $events->map(function ($event) use ($runsById) {
                 $sender = $event->thread?->senderMailbox;
                 $seed = $event->thread?->seedMailbox;
+                $plannerRunId = is_array($event->payload) ? ($event->payload['planner_run_id'] ?? null) : null;
+                $run = $plannerRunId ? $runsById->get((int) $plannerRunId) : null;
 
                 return [
                     'id' => $event->id,
@@ -156,6 +183,9 @@ class WarmupCampaignController extends Controller
                     'subject' => $event->thread?->subject_line,
                     'priority' => $event->priority,
                     'failure_reason' => $event->failure_reason,
+                    'planner_run_id' => $plannerRunId,
+                    'warmup_day_number' => $run?->warmup_day_number,
+                    'plan_date' => $run?->plan_date?->format('Y-m-d'),
                 ];
             });
 
@@ -163,7 +193,85 @@ class WarmupCampaignController extends Controller
             'campaign_id' => $campaign->id,
             'campaign_name' => $campaign->campaign_name,
             'server_time' => now()->toIso8601String(),
+            'selected_date' => $date,
             'events' => $events,
         ]);
+    }
+
+    /**
+     * Full event ledger for campaign detail page.
+     */
+    public function events(Request $request, int $id): JsonResponse
+    {
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
+        $selectedDate = $request->query('date');
+
+        $query = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
+            ->with(['thread.senderMailbox', 'thread.seedMailbox'])
+            ->orderByDesc('scheduled_at')
+            ->orderByDesc('id');
+
+        if ($selectedDate) {
+            $query->whereDate('scheduled_at', \Carbon\Carbon::parse($selectedDate)->toDateString());
+        }
+
+        $events = $query->limit(1000)->get()->map(function ($event) {
+            $sender = $event->thread?->senderMailbox;
+            $seed = $event->thread?->seedMailbox;
+
+            return [
+                'id' => $event->id,
+                'event_type' => $event->event_type,
+                'status' => $event->status,
+                'scheduled_at' => $event->scheduled_at?->toIso8601String(),
+                'executed_at' => $event->executed_at?->toIso8601String(),
+                'failure_reason' => $event->failure_reason,
+                'thread_id' => $event->thread_id,
+                'sender_email' => $sender?->email_address,
+                'seed_email' => $seed?->email_address,
+                'subject' => $event->thread?->subject_line,
+                'thread_status' => $event->thread?->thread_status,
+                'planned_message_count' => $event->thread?->planned_message_count,
+                'actual_message_count' => $event->thread?->actual_message_count,
+            ];
+        });
+
+        return response()->json([
+            'campaign_id' => $campaign->id,
+            'events' => $events,
+        ]);
+    }
+
+    private function buildDailyRecords(int $campaignId): array
+    {
+        return PlannerRun::where('warmup_campaign_id', $campaignId)
+            ->orderByDesc('plan_date')
+            ->orderByDesc('id')
+            ->limit(90)
+            ->get()
+            ->map(function (PlannerRun $run) {
+                $newThreads = (int) ($run->new_thread_target ?? 0);
+                $replies = (int) ($run->reply_target ?? 0);
+
+                return [
+                    'id' => $run->id,
+                    'plan_date' => $run->plan_date?->format('Y-m-d'),
+                    'warmup_day_number' => (int) ($run->warmup_day_number ?? 0),
+                    'warmup_stage' => $run->warmup_stage,
+                    'new_thread_target' => $newThreads,
+                    'reply_target' => $replies,
+                    'total_action_budget' => (int) ($run->total_action_budget ?? 0),
+                    'planned_sender_actions' => $newThreads + $replies,
+                    'actual_new_threads' => (int) ($run->actual_new_threads ?? 0),
+                    'actual_replies' => (int) ($run->actual_replies ?? 0),
+                    'actual_total_actions' => (int) ($run->actual_total_actions ?? 0),
+                    'eligible_seed_count' => is_array($run->eligible_seed_ids) ? count($run->eligible_seed_ids) : 0,
+                    'status' => $run->status,
+                    'working_window_start' => $run->working_window_start,
+                    'working_window_end' => $run->working_window_end,
+                ];
+            })
+            ->values()
+            ->toArray();
     }
 }

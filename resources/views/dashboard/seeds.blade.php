@@ -49,6 +49,9 @@
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.total_interactions ?? 0"></td>
                         <td class="px-5 py-4 text-right">
                             <div class="flex items-center justify-end gap-1">
+                                <button @click="viewSeedHistory(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="View History">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
                                 <button @click="togglePause(s)" class="btn-ghost p-2 rounded-lg text-zinc-500" :class="s.status === 'active' ? 'hover:text-amber-400' : 'hover:text-emerald-400'">
                                     <i :data-lucide="s.status === 'active' ? 'pause' : 'play'" class="w-4 h-4"></i>
                                 </button>
@@ -246,6 +249,93 @@
             </form>
         </div>
     </div>
+
+    <!-- Seed History Modal -->
+    <div x-show="showDetail" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="closeDetail()">
+        <div class="w-full max-w-6xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-5">
+                <div>
+                    <h3 class="text-white font-semibold text-lg">Seed Warmup History</h3>
+                    <p class="text-zinc-500 text-xs mt-0.5" x-text="seedDetail?.seed?.email_address || 'Loading...'" ></p>
+                </div>
+                <button @click="closeDetail()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div x-show="detailLoading" class="text-center py-12">
+                <i data-lucide="loader" class="w-5 h-5 text-zinc-500 animate-spin mx-auto"></i>
+                <p class="text-zinc-500 text-sm mt-2">Loading seed history...</p>
+            </div>
+
+            <div x-show="!detailLoading && seedDetail" class="space-y-4">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-white" x-text="seedDetail.summary?.unique_senders ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Senders</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-white" x-text="seedDetail.summary?.total_threads ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Threads</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-emerald-400" x-text="seedDetail.summary?.active_threads ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Active Threads</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-brand-400" x-text="seedDetail.summary?.messages_total ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Messages</p>
+                    </div>
+                    <div class="glass rounded-xl p-3 text-center">
+                        <p class="text-lg font-bold text-amber-400" x-text="seedDetail.summary?.interactions_30d ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase">Interactions 30d</p>
+                    </div>
+                </div>
+
+                <div x-show="!(seedDetail.by_sender || []).length" class="text-center py-10 text-zinc-500 text-sm">
+                    No warmup history found for this seed yet.
+                </div>
+
+                <template x-for="group in (seedDetail.by_sender || [])" :key="group.sender_mailbox_id">
+                    <div class="glass rounded-2xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                            <div>
+                                <p class="text-white font-medium text-sm" x-text="group.sender_email || 'Unknown sender'"></p>
+                                <p class="text-zinc-500 text-[11px]" x-text="'Threads: ' + (group.threads_count || 0) + ' • Messages: ' + (group.messages_count || 0)"></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-zinc-400 text-[11px]">Last Interaction</p>
+                                <p class="text-white text-xs" x-text="formatDateTime(group.last_interaction_at)"></p>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-b border-white/[0.05]">
+                                        <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Campaign</th>
+                                        <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Thread</th>
+                                        <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Direction</th>
+                                        <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Subject</th>
+                                        <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Sent At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="msg in (group.messages || []).slice(0, 60)" :key="msg.thread_id + '-' + msg.sent_at + '-' + msg.direction">
+                                        <tr class="border-b border-white/[0.03]">
+                                            <td class="px-4 py-2 text-zinc-300" x-text="msg.campaign_name || '—'"></td>
+                                            <td class="px-4 py-2 text-zinc-400" x-text="'#' + (msg.thread_id || '—')"></td>
+                                            <td class="px-4 py-2 text-zinc-400" x-text="(msg.direction || '—').replace(/_/g, ' ')"></td>
+                                            <td class="px-4 py-2 text-zinc-300 truncate max-w-[260px]" x-text="msg.subject || '—'"></td>
+                                            <td class="px-4 py-2 text-zinc-500" x-text="formatDateTime(msg.sent_at)"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -260,7 +350,7 @@ const PROVIDER_DEFAULTS = {
 
 function seedsPage() {
     return {
-        seeds: [], showModal: false, showImport: false, editMode: false, editId: null, saving: false, importFile: null, importing: false, importResult: null, form: {},
+        seeds: [], showModal: false, showImport: false, showDetail: false, detailLoading: false, seedDetail: null, editMode: false, editId: null, saving: false, importFile: null, importing: false, importResult: null, form: {},
 
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
         async load() { try { this.seeds = await apiCall('/api/warmup/seed-mailboxes'); } catch(e) { this.seeds = []; } this.$nextTick(() => lucide.createIcons()); },
@@ -290,6 +380,27 @@ function seedsPage() {
         },
 
         editSeed(s) { this.editMode = true; this.editId = s.id; this.form = { ...s, smtp_password: '', imap_password: '' }; this.showModal = true; },
+        async viewSeedHistory(seed) {
+            this.showDetail = true;
+            this.detailLoading = true;
+            this.seedDetail = null;
+            try {
+                this.seedDetail = await apiCall(`/api/warmup/seed-mailboxes/${seed.id}/history`);
+            } catch (e) {
+                showToast('Failed to load seed history: ' + e.message, 'error');
+            }
+            this.detailLoading = false;
+            this.$nextTick(() => lucide.createIcons());
+        },
+        closeDetail() {
+            this.showDetail = false;
+            this.seedDetail = null;
+            this.detailLoading = false;
+        },
+        formatDateTime(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleString();
+        },
         async saveSeed() {
             this.saving = true;
             try {
