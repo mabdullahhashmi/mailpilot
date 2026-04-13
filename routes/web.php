@@ -53,7 +53,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::post('seed-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SeedMailboxController::class, 'resume']);
 
     // Domains
-    Route::apiResource('domains', \App\Http\Controllers\Api\DomainController::class)->except(['update']);
+    Route::apiResource('domains', \App\Http\Controllers\Api\DomainController::class);
     Route::post('domains/{id}/check-dns', [\App\Http\Controllers\Api\DomainController::class, 'checkDns']);
 
     // Warmup Profiles

@@ -27,9 +27,19 @@
                             <p class="text-zinc-500 text-xs" x-text="(d.sender_mailboxes?.length || 0) + ' senders'"></p>
                         </div>
                     </div>
-                    <button @click="deleteDomain(d.id)" class="btn-ghost p-2 rounded-lg text-zinc-600 hover:text-red-400">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                    </button>
+                    <div class="flex items-center gap-1">
+                        <button @click="editCap(d)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="Edit Daily Cap">
+                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                        </button>
+                        <button @click="deleteDomain(d.id)" class="btn-ghost p-2 rounded-lg text-zinc-600 hover:text-red-400" title="Delete Domain">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-4 flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
+                    <span class="text-zinc-500 text-xs">Daily Cap</span>
+                    <span class="text-white text-sm font-semibold" x-text="getDomainCap(d)"></span>
                 </div>
 
                 <!-- Health Score -->
@@ -116,6 +126,11 @@ function domainsPage() {
             const value = Number.parseInt(raw, 10);
             return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
         },
+        getDomainCap(d) {
+            const raw = d?.daily_sending_cap ?? d?.daily_domain_cap ?? 50;
+            const value = Number.parseInt(raw, 10);
+            return Number.isFinite(value) ? value : 50;
+        },
         getDnsStatus(d, check) {
             const nestedStatus = d?.dns_check_results?.[check]?.status;
             if (nestedStatus) return nestedStatus;
@@ -128,6 +143,25 @@ function domainsPage() {
         async saveDomain() {
             try { await apiCall('/api/warmup/domains', 'POST', this.form); showToast('Domain added'); this.showModal = false; await this.load(); }
             catch(e) { showToast('Error: ' + e.message, 'error'); }
+        },
+        async editCap(domain) {
+            const currentCap = this.getDomainCap(domain);
+            const input = prompt(`Set daily cap for ${domain.domain_name}`, String(currentCap));
+            if (input === null) return;
+
+            const cap = Number.parseInt(String(input).trim(), 10);
+            if (!Number.isFinite(cap) || cap < 1) {
+                showToast('Daily cap must be a number >= 1', 'error');
+                return;
+            }
+
+            try {
+                await apiCall(`/api/warmup/domains/${domain.id}`, 'PUT', { daily_domain_cap: cap });
+                showToast('Daily cap updated');
+                await this.load();
+            } catch (e) {
+                showToast('Failed to update daily cap: ' + (e.message || 'Unknown error'), 'error');
+            }
         },
         async checkDns(id) {
             const d = this.domains.find(x => x.id === id);

@@ -10,10 +10,14 @@ class Domain extends Model
     protected $fillable = [
         'domain_name', 'spf_status', 'dkim_status', 'dmarc_status', 'mx_status',
         'dns_last_checked_at', 'domain_health_score', 'readiness_score',
-        'daily_domain_cap', 'daily_growth_cap', 'max_active_warming_mailboxes',
+        'daily_domain_cap', 'daily_sending_cap', 'daily_growth_cap', 'max_active_warming_mailboxes',
         'maintenance_mode', 'status',
         'reputation_risk_level', 'reputation_score', 'last_reputation_scan_at',
         'total_bounces_7d', 'total_sends_7d',
+    ];
+
+    protected $appends = [
+        'daily_sending_cap',
     ];
 
     protected $casts = [
@@ -25,6 +29,16 @@ class Domain extends Model
     public function senderMailboxes(): HasMany
     {
         return $this->hasMany(SenderMailbox::class);
+    }
+
+    public function getDailySendingCapAttribute(): int
+    {
+        return (int) ($this->attributes['daily_domain_cap'] ?? 50);
+    }
+
+    public function setDailySendingCapAttribute($value): void
+    {
+        $this->attributes['daily_domain_cap'] = (int) $value;
     }
 
     public function warmupCampaigns(): HasMany

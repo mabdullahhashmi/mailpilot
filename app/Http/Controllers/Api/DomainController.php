@@ -29,10 +29,33 @@ class DomainController extends Controller
         $validated = $request->validate([
             'domain_name' => 'required|string|unique:domains,domain_name',
             'daily_sending_cap' => 'nullable|integer|min:1',
+            'daily_domain_cap' => 'nullable|integer|min:1',
         ]);
+
+        if (isset($validated['daily_sending_cap']) && !isset($validated['daily_domain_cap'])) {
+            $validated['daily_domain_cap'] = $validated['daily_sending_cap'];
+        }
 
         $domain = $this->domainService->create($validated);
         return response()->json($domain, 201);
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'domain_name' => 'sometimes|string|unique:domains,domain_name,' . $id,
+            'daily_sending_cap' => 'nullable|integer|min:1',
+            'daily_domain_cap' => 'nullable|integer|min:1',
+        ]);
+
+        if (isset($validated['daily_sending_cap']) && !isset($validated['daily_domain_cap'])) {
+            $validated['daily_domain_cap'] = $validated['daily_sending_cap'];
+        }
+
+        $domain = \App\Models\Domain::findOrFail($id);
+        $updated = $this->domainService->update($domain, $validated);
+
+        return response()->json($updated);
     }
 
     public function show(int $id): JsonResponse
