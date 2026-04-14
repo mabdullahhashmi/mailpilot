@@ -13,6 +13,8 @@ class MailboxService
         $domain = $this->resolveOrCreateDomain($data['email_address']);
         $data['domain_id'] = $domain->id;
 
+        $data = $this->applyDefaults($data);
+
         // Map frontend field names to model columns
         if (isset($data['warmup_target_daily'])) {
             $data['daily_send_cap'] = $data['warmup_target_daily'];
@@ -40,6 +42,8 @@ class MailboxService
 
     public function update(SenderMailbox $mailbox, array $data): SenderMailbox
     {
+        $data = $this->applyDefaults($data);
+
         // Map frontend field names to model columns
         if (isset($data['warmup_target_daily'])) {
             $data['daily_send_cap'] = $data['warmup_target_daily'];
@@ -221,5 +225,30 @@ class MailboxService
             'yahoo' => 'yahoo',
             default => 'custom_smtp',
         };
+    }
+
+    private function applyDefaults(array $data): array
+    {
+        if (array_key_exists('timezone', $data) && ($data['timezone'] === null || trim((string) $data['timezone']) === '')) {
+            $data['timezone'] = 'UTC';
+        }
+
+        if (array_key_exists('working_hours_start', $data) && ($data['working_hours_start'] === null || trim((string) $data['working_hours_start']) === '')) {
+            $data['working_hours_start'] = '08:00:00';
+        }
+
+        if (array_key_exists('working_hours_end', $data) && ($data['working_hours_end'] === null || trim((string) $data['working_hours_end']) === '')) {
+            $data['working_hours_end'] = '18:00:00';
+        }
+
+        if (array_key_exists('smtp_encryption', $data) && ($data['smtp_encryption'] === null || trim((string) $data['smtp_encryption']) === '')) {
+            $data['smtp_encryption'] = 'tls';
+        }
+
+        if (array_key_exists('imap_encryption', $data) && ($data['imap_encryption'] === null || trim((string) $data['imap_encryption']) === '')) {
+            $data['imap_encryption'] = 'ssl';
+        }
+
+        return $data;
     }
 }
