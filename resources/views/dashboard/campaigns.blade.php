@@ -8,9 +8,14 @@
 
     <div class="flex items-center justify-between mb-6">
         <span class="text-zinc-500 text-sm" x-text="campaigns.length + ' campaigns'"></span>
-        <button @click="openCreateModal()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i> New Campaign
-        </button>
+        <div class="flex items-center gap-2">
+            <button @click="openBulkCreateModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 transition">
+                <i data-lucide="layers-3" class="w-4 h-4"></i> Bulk Campaigns
+            </button>
+            <button @click="openCreateModal()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i> New Campaign
+            </button>
+        </div>
     </div>
 
     <!-- Campaign Cards -->
@@ -151,6 +156,123 @@
             </form>
         </div>
     </div>
+
+    <!-- Bulk Campaign Modal -->
+    <div x-show="showBulkModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showBulkModal = false">
+        <div class="w-full max-w-5xl max-h-[92vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-5">
+                <div>
+                    <h3 class="text-white font-semibold text-lg">Bulk Campaign Creator</h3>
+                    <p class="text-zinc-500 text-xs mt-1">Create campaigns for multiple senders in one action.</p>
+                </div>
+                <button @click="showBulkModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div x-show="bulkResult" class="mb-4 p-3 rounded-xl" :class="bulkResult?.skipped > 0 ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-emerald-500/10 border border-emerald-500/25'">
+                <p class="text-sm font-medium" :class="bulkResult?.skipped > 0 ? 'text-amber-400' : 'text-emerald-400'">
+                    <span x-text="bulkResult?.imported || 0"></span> created,
+                    <span x-text="bulkResult?.skipped || 0"></span> skipped
+                </p>
+                <template x-if="bulkResult?.errors?.length">
+                    <div class="mt-2 max-h-28 overflow-y-auto space-y-1">
+                        <template x-for="err in bulkResult.errors" :key="err">
+                            <p class="text-red-400/90 text-[11px]" x-text="err"></p>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Name Prefix</label>
+                    <input type="text" x-model="bulkForm.campaign_name_prefix" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="Example: Batch April">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Warmup Profile *</label>
+                    <select x-model="bulkForm.warmup_profile_id" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                        <option value="">Select profile</option>
+                        <template x-for="p in profileOptions" :key="p.id">
+                            <option :value="p.id" x-text="p.profile_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Skip Active Campaigns</label>
+                    <label class="flex items-center gap-2 py-2.5 px-3 rounded-xl border border-white/10 bg-white/[0.02] cursor-pointer">
+                        <input type="checkbox" x-model="bulkForm.skip_existing_active" class="rounded border-zinc-600 bg-zinc-900 text-cyan-500 focus:ring-cyan-500">
+                        <span class="text-xs text-zinc-300">Enabled</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-4 max-w-md">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window Start</label>
+                    <input type="time" x-model="bulkForm.time_window_start" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window End</label>
+                    <input type="time" x-model="bulkForm.time_window_end" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 mb-3">
+                <button type="button" @click="selectAllEligibleSenders()" class="px-3 py-2 rounded-lg text-xs text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10">Select All Active</button>
+                <button type="button" @click="clearBulkSelection()" class="px-3 py-2 rounded-lg text-xs text-zinc-300 bg-white/0 hover:bg-white/5 border border-white/10">Clear</button>
+                <span class="ml-auto text-[11px] text-zinc-500" x-text="(bulkForm.sender_mailbox_ids?.length || 0) + ' sender(s) selected'"></span>
+            </div>
+
+            <div class="border border-white/10 rounded-xl overflow-hidden">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-white/10 bg-white/[0.02]">
+                            <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Select</th>
+                            <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Sender</th>
+                            <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Mailbox Status</th>
+                            <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Existing Campaign</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="s in senderOptions" :key="s.id">
+                            <tr class="border-b border-white/5 hover:bg-white/[0.02]">
+                                <td class="px-4 py-2">
+                                    <input
+                                        type="checkbox"
+                                        :disabled="s.status !== 'active'"
+                                        :checked="bulkForm.sender_mailbox_ids.includes(Number(s.id))"
+                                        @change="toggleBulkSender(s.id)"
+                                        class="rounded border-zinc-600 bg-zinc-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-40"
+                                    >
+                                </td>
+                                <td class="px-4 py-2 text-sm text-white" x-text="s.email_address"></td>
+                                <td class="px-4 py-2">
+                                    <span class="text-[11px] px-2 py-0.5 rounded-full"
+                                          :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-500/15 text-zinc-400'"
+                                          x-text="s.status"></span>
+                                </td>
+                                <td class="px-4 py-2 text-xs text-zinc-400">
+                                    <template x-if="runningCampaignBySender(s.id)">
+                                        <span class="text-amber-400" x-text="runningCampaignBySender(s.id).status + ' · ' + (runningCampaignBySender(s.id).campaign_name || ('Campaign #' + runningCampaignBySender(s.id).id))"></span>
+                                    </template>
+                                    <template x-if="!runningCampaignBySender(s.id)">
+                                        <span class="text-zinc-500">none</span>
+                                    </template>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4">
+                <button type="button" @click="showBulkModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Cancel</button>
+                <button type="button" @click="saveBulkCampaigns()" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="bulkSaving">
+                    <span x-show="!bulkSaving">Create Bulk Campaigns</span>
+                    <span x-show="bulkSaving">Creating...</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -158,8 +280,18 @@
 <script>
 function campaignsPage() {
     return {
-        campaigns: [], senderOptions: [], profileOptions: [], showModal: false, form: {},
+        campaigns: [],
+        senderOptions: [],
+        profileOptions: [],
+        showModal: false,
+        showBulkModal: false,
+        bulkSaving: false,
+        bulkResult: null,
+        form: {},
+        bulkForm: {},
         async init() {
+            this.resetForm();
+            this.resetBulkForm();
             await this.loadCampaigns();
             await this.loadOptions();
             this.$nextTick(() => lucide.createIcons());
@@ -185,10 +317,45 @@ function campaignsPage() {
             await this.loadOptions();
             this.$nextTick(() => lucide.createIcons());
         },
+        async openBulkCreateModal() {
+            this.resetBulkForm();
+            this.showBulkModal = true;
+            await this.loadOptions();
+            this.$nextTick(() => lucide.createIcons());
+        },
         hasShortTestProfile() {
             return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
         resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00' }; },
+        resetBulkForm() {
+            this.bulkForm = {
+                campaign_name_prefix: '',
+                warmup_profile_id: '',
+                time_window_start: '08:00',
+                time_window_end: '22:00',
+                skip_existing_active: true,
+                sender_mailbox_ids: [],
+            };
+            this.bulkResult = null;
+        },
+        runningCampaignBySender(senderId) {
+            return (this.campaigns || []).find(c => Number(c.sender_mailbox_id) === Number(senderId) && ['active', 'paused'].includes(c.status));
+        },
+        toggleBulkSender(senderId) {
+            const id = Number(senderId);
+            const next = new Set((this.bulkForm.sender_mailbox_ids || []).map(Number));
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            this.bulkForm.sender_mailbox_ids = Array.from(next.values());
+        },
+        clearBulkSelection() {
+            this.bulkForm.sender_mailbox_ids = [];
+        },
+        selectAllEligibleSenders() {
+            this.bulkForm.sender_mailbox_ids = (this.senderOptions || [])
+                .filter(s => s.status === 'active')
+                .map(s => Number(s.id));
+        },
         dayPercent(c) { const total = c.profile?.total_days || 14; return Math.min(100, Math.round(((c.current_day_number || 1) / total) * 100)); },
         statusGradient(s) { return { active: 'gradient-success', paused: 'gradient-warning', draft: 'bg-zinc-700', stopped: 'bg-red-900/50', completed: 'gradient-brand' }[s] || 'bg-zinc-700'; },
         statusBadge(s) { return { active: 'bg-emerald-500/15 text-emerald-400', paused: 'bg-amber-500/15 text-amber-400', draft: 'bg-zinc-500/15 text-zinc-400', stopped: 'bg-red-500/15 text-red-400', completed: 'bg-brand-500/15 text-brand-400' }[s] || 'bg-zinc-500/15 text-zinc-400'; },
@@ -196,6 +363,49 @@ function campaignsPage() {
         async saveCampaign() {
             try { await apiCall('/api/warmup/campaigns', 'POST', this.form); showToast('Campaign created'); this.showModal = false; await this.init(); }
             catch(e) { showToast('Error: ' + e.message, 'error'); }
+        },
+        async saveBulkCampaigns() {
+            if (!this.bulkForm.warmup_profile_id) {
+                showToast('Select a warmup profile for bulk creation.', 'error');
+                return;
+            }
+
+            const senderIds = (this.bulkForm.sender_mailbox_ids || []).map(Number).filter(Boolean);
+            if (!senderIds.length) {
+                showToast('Select at least one sender for bulk creation.', 'error');
+                return;
+            }
+
+            this.bulkSaving = true;
+            this.bulkResult = null;
+
+            try {
+                const payload = {
+                    sender_mailbox_ids: senderIds,
+                    warmup_profile_id: Number(this.bulkForm.warmup_profile_id),
+                    campaign_name_prefix: (this.bulkForm.campaign_name_prefix || '').trim() || null,
+                    time_window_start: this.bulkForm.time_window_start || null,
+                    time_window_end: this.bulkForm.time_window_end || null,
+                    skip_existing_active: !!this.bulkForm.skip_existing_active,
+                };
+
+                const res = await apiCall('/api/warmup/campaigns/bulk', 'POST', payload);
+                this.bulkResult = res;
+
+                if ((res.imported || 0) > 0) {
+                    await this.loadCampaigns();
+                }
+
+                if ((res.skipped || 0) > 0) {
+                    showToast(`Bulk campaigns created: ${res.imported || 0}, skipped: ${res.skipped || 0}.`, 'info');
+                } else {
+                    showToast(`Bulk campaigns created: ${res.imported || 0}.`, 'success');
+                }
+            } catch (e) {
+                showToast('Bulk creation failed: ' + e.message, 'error');
+            } finally {
+                this.bulkSaving = false;
+            }
         },
         async action(id, act) {
             try { await apiCall(`/api/warmup/campaigns/${id}/${act}`, 'POST'); showToast(`Campaign ${act}ed`); await this.init(); }

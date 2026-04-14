@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SenderMailbox;
+use App\Models\WarmupCampaign;
 use App\Services\WarmupCampaignService;
 use App\Services\ReportingService;
 use App\Services\ReadinessScoringService;
@@ -66,6 +67,106 @@ class WarmupCampaignController extends Controller
         }
 
         return response()->json($campaign->fresh(), 201);
+    }
+
+    public function bulkStore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sender_mailbox_ids' => 'required|array|min:1|max:300',
+            'sender_mailbox_ids.*' => 'required|integer|distinct|exists:sender_mailboxes,id',
+            'warmup_profile_id' => 'required|exists:warmup_profiles,id',
+            'campaign_name_prefix' => 'nullable|string|max:255',
+            'time_window_start' => 'nullable|string',
+            'time_window_end' => 'nullable|string',
+            'skip_existing_active' => 'nullable|boolean',
+        ]);
+
+        $skipExistingActive = (bool) ($validated['skip_existing_active'] ?? true);
+        $campaignNamePrefix = trim((string) ($validated['campaign_name_prefix'] ?? ''));
+
+        $senderIds = array_values($validated['sender_mailbox_ids']);
+        $sendersById = SenderMailbox::whereIn('id', $senderIds)->get()->keyBy('id');
+
+        $created = [];
+        $errors = [];
+        $skipped = 0;
+
+        foreach ($senderIds as $position => $senderId) {
+            $lineNumber = $position + 1;
+            $sender = $sendersById->get($senderId);
+
+            if (!$sender) {
+                $errors[] = "Row {$lineNumber}: sender #{$senderId} not found";
+                $skipped++;
+                continue;
+            }
+
+            if ($sender->status !== 'active') {
+                $errors[] = "Row {$lineNumber}: {$sender->email_address} is not active";
+                $skipped++;
+                continue;
+            }
+
+            if ($skipExistingActive) {
+                $hasRunningCampaign = WarmupCampaign::where('sender_mailbox_id', $sender->id)
+                    ->whereIn('status', ['active', 'paused'])
+                    ->exists();
+
+                if ($hasRunningCampaign) {
+                    $errors[] = "Row {$lineNumber}: {$sender->email_address} already has an active/paused campaign";
+                    $skipped++;
+                    continue;
+                }
+            }
+
+            try {
+                $campaign = $this->campaignService->start($sender, (int) $validated['warmup_profile_id']);
+
+                $updates = [];
+                if ($campaignNamePrefix !== '') {
+                    $localPart = explode('@', $sender->email_address)[0] ?? ('sender-' . $sender->id);
+                    $updates['campaign_name'] = trim($campaignNamePrefix . ' - ' . $localPart);
+                }
+
+                if (!empty($validated['time_window_start'])) {
+                    $updates['time_window_start'] = $validated['time_window_start'];
+                }
+
+                if (!empty($validated['time_window_end'])) {
+                    $updates['time_window_end'] = $validated['time_window_end'];
+                }
+
+                if (!empty($updates)) {
+                    $campaign->update($updates);
+                }
+
+                // Auto-plan events for each created campaign
+                try {
+                    $campaign->refresh();
+                    $this->plannerService->planDay($campaign);
+                } catch (\Throwable $e) {
+                    \Log::warning("Bulk campaign auto-plan failed for campaign #{$campaign->id}: " . $e->getMessage());
+                }
+
+                $created[] = [
+                    'campaign_id' => $campaign->id,
+                    'sender_mailbox_id' => $sender->id,
+                    'sender_email' => $sender->email_address,
+                    'campaign_name' => $campaign->campaign_name,
+                    'status' => $campaign->status,
+                ];
+            } catch (\Throwable $e) {
+                $errors[] = "Row {$lineNumber}: {$sender->email_address} - {$e->getMessage()}";
+                $skipped++;
+            }
+        }
+
+        return response()->json([
+            'imported' => count($created),
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 100),
+            'created' => $created,
+        ]);
     }
 
     public function show(int $id): JsonResponse
