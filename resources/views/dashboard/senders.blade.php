@@ -126,7 +126,7 @@
     </div>
 
     <!-- Bulk Table Modal -->
-    <div x-show="showBulkModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-overlay" @click.self="showBulkModal = false">
+    <div x-show="showBulkModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-overlay" @click.self="showBulkModal = false" @paste="handleBulkPaste($event)">
         <div class="w-[min(98vw,1500px)] max-h-[94vh] overflow-y-auto glass rounded-2xl p-5 fade-in" @click.stop>
             <div class="flex items-center justify-between mb-4">
                 <div>
@@ -138,6 +138,7 @@
 
             <div class="mb-4 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/25">
                 <p class="text-cyan-300 text-xs">Tip: choose provider to auto-fill common hosts/ports, then adjust any row manually for custom SMTP/IMAP setups.</p>
+                <p class="text-cyan-200/80 text-[11px] mt-1">Paste shortcut: copy rows from Google Sheets and press Ctrl+V anywhere in this modal to auto-fill the table.</p>
             </div>
 
             <div x-show="bulkResult" class="mb-4 p-3 rounded-xl" :class="bulkResult?.skipped > 0 ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-emerald-500/10 border border-emerald-500/25'">
@@ -528,6 +529,183 @@ function sendersPage() {
             if (row.email_address && !row.imap_username) {
                 row.imap_username = row.email_address;
             }
+        },
+
+        bulkColumnOrder() {
+            return [
+                'email_address',
+                'provider',
+                'smtp_host',
+                'smtp_port',
+                'smtp_username',
+                'smtp_password',
+                'smtp_encryption',
+                'imap_host',
+                'imap_port',
+                'imap_username',
+                'imap_password',
+                'imap_encryption',
+                'warmup_target_daily',
+            ];
+        },
+
+        bulkHeaderFieldMap() {
+            return {
+                email: 'email_address',
+                email_address: 'email_address',
+                sender_email: 'email_address',
+                provider: 'provider',
+                smtp_host: 'smtp_host',
+                smtp_server: 'smtp_host',
+                smtp: 'smtp_host',
+                smtp_port: 'smtp_port',
+                smtp_username: 'smtp_username',
+                smtp_user: 'smtp_username',
+                smtp_password: 'smtp_password',
+                smtp_pass: 'smtp_password',
+                smtp_app_password: 'smtp_password',
+                app_password: 'smtp_password',
+                password: 'smtp_password',
+                smtp_encryption: 'smtp_encryption',
+                smtp_enc: 'smtp_encryption',
+                smtp_security: 'smtp_encryption',
+                imap_host: 'imap_host',
+                imap_server: 'imap_host',
+                imap: 'imap_host',
+                imap_port: 'imap_port',
+                imap_username: 'imap_username',
+                imap_user: 'imap_username',
+                imap_password: 'imap_password',
+                imap_pass: 'imap_password',
+                imap_encryption: 'imap_encryption',
+                imap_enc: 'imap_encryption',
+                imap_security: 'imap_encryption',
+                warmup_target_daily: 'warmup_target_daily',
+                warmup_daily_target: 'warmup_target_daily',
+                daily_target: 'warmup_target_daily',
+                daily_cap: 'warmup_target_daily',
+            };
+        },
+
+        normalizePasteHeader(value) {
+            return String(value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/\s+/g, '_')
+                .replace(/[^a-z0-9_]/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        },
+
+        normalizeProviderFromPaste(value) {
+            const raw = String(value || '').trim().toLowerCase();
+            if (!raw) return '';
+            if (['google', 'gmail', 'g-suite', 'gsuite'].includes(raw)) return 'google';
+            if (['microsoft', 'outlook', 'office365', 'office_365', 'm365'].includes(raw)) return 'microsoft';
+            if (['zoho'].includes(raw)) return 'zoho';
+            if (['yahoo'].includes(raw)) return 'yahoo';
+            return raw;
+        },
+
+        normalizeEncryptionFromPaste(value) {
+            const raw = String(value || '').trim().toLowerCase();
+            if (!raw) return '';
+            if (['starttls', 'tls'].includes(raw)) return 'tls';
+            if (['ssl'].includes(raw)) return 'ssl';
+            if (['none', 'no', 'plain'].includes(raw)) return 'none';
+            return raw;
+        },
+
+        normalizeBulkFieldValue(field, value) {
+            const text = String(value ?? '').trim();
+            if (text === '') return '';
+
+            if (field === 'provider') {
+                return this.normalizeProviderFromPaste(text);
+            }
+
+            if (field === 'smtp_encryption' || field === 'imap_encryption') {
+                return this.normalizeEncryptionFromPaste(text);
+            }
+
+            if (field === 'smtp_port' || field === 'imap_port' || field === 'warmup_target_daily') {
+                const n = Number.parseInt(text, 10);
+                return Number.isFinite(n) ? n : '';
+            }
+
+            return text;
+        },
+
+        fillProviderDefaultsIfMissing(row) {
+            const d = PROVIDER_DEFAULTS[row.provider];
+            if (!d) return;
+
+            if (!row.smtp_host) row.smtp_host = d.smtp_host;
+            if (!row.smtp_port) row.smtp_port = d.smtp_port;
+            if (!row.smtp_encryption) row.smtp_encryption = d.smtp_encryption;
+            if (!row.imap_host) row.imap_host = d.imap_host;
+            if (!row.imap_port) row.imap_port = d.imap_port;
+            if (!row.imap_encryption) row.imap_encryption = d.imap_encryption;
+        },
+
+        parseBulkClipboardText(text) {
+            const normalizedText = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = normalizedText.split('\n').filter((line) => line.trim() !== '');
+            if (!lines.length) return [];
+
+            const grid = lines.map((line) => line.split('\t'));
+            const headerFieldMap = this.bulkHeaderFieldMap();
+            const firstHeaders = grid[0].map((cell) => this.normalizePasteHeader(cell));
+            const hasHeader = firstHeaders.some((h) => !!headerFieldMap[h]);
+
+            const columnOrder = hasHeader
+                ? firstHeaders.map((h) => headerFieldMap[h] || null)
+                : this.bulkColumnOrder();
+
+            const startIndex = hasHeader ? 1 : 0;
+            const rows = [];
+
+            for (let i = startIndex; i < grid.length; i++) {
+                const row = this.newBulkRow();
+                const cells = grid[i];
+
+                cells.forEach((cell, index) => {
+                    const field = columnOrder[index];
+                    if (!field) return;
+                    row[field] = this.normalizeBulkFieldValue(field, cell);
+                });
+
+                this.fillProviderDefaultsIfMissing(row);
+                this.syncBulkUsernames(row);
+
+                const hasAnyData = this.bulkColumnOrder().some((field) => String(row[field] ?? '').trim() !== '');
+                if (!hasAnyData) continue;
+
+                rows.push(row);
+            }
+
+            return rows;
+        },
+
+        handleBulkPaste(event) {
+            if (!this.showBulkModal) return;
+
+            const text = event?.clipboardData?.getData('text/plain') || '';
+            if (!text || (!text.includes('\t') && !text.includes('\n') && !text.includes('\r'))) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const parsedRows = this.parseBulkClipboardText(text);
+            if (!parsedRows.length) {
+                showToast('Could not parse pasted sheet data.', 'error');
+                return;
+            }
+
+            this.bulkRows = parsedRows;
+            this.bulkResult = null;
+            showToast(`Pasted ${parsedRows.length} row(s) from Google Sheets.`, 'success');
         },
 
         editSender(s) {
