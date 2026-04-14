@@ -205,6 +205,24 @@ class SenderMailboxController extends Controller
         return response()->json($result);
     }
 
+    public function testSmtpCredentials(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email_address' => 'required|email',
+            'smtp_host' => ['required', 'string', 'max:255', 'not_regex:/@/'],
+            'smtp_port' => 'required|integer|min:1',
+            'smtp_username' => 'required|string',
+            'smtp_password' => 'required|string',
+            'smtp_encryption' => 'required|in:tls,ssl,none',
+            'test_email' => 'nullable|email',
+        ], [
+            'smtp_host.not_regex' => 'SMTP host must be a server host (e.g. smtp.gmail.com), not an email address.',
+        ]);
+
+        $result = $this->service->testSmtpCredentials($validated, $validated['test_email'] ?? null);
+        return response()->json($result);
+    }
+
     public function pause(Request $request, int $id): JsonResponse
     {
         $mailbox = \App\Models\SenderMailbox::findOrFail($id);

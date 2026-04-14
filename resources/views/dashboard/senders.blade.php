@@ -239,7 +239,16 @@
                                     <input type="number" x-model.number="row.warmup_target_daily" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" min="1" placeholder="20">
                                 </td>
                                 <td class="px-2 py-2 text-right">
-                                    <button type="button" @click="removeBulkRow(idx)" class="px-2 py-1 rounded-md text-[11px] text-red-300 hover:text-red-200 hover:bg-red-500/10 border border-red-500/20">Remove</button>
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button type="button" @click="verifyBulkRowSmtp(row, idx)" :disabled="bulkTestingIndex === idx" class="px-2 py-1 rounded-md text-[11px] text-cyan-300 hover:text-cyan-200 hover:bg-cyan-500/10 border border-cyan-500/30 disabled:opacity-60 disabled:cursor-not-allowed">
+                                            <span x-show="bulkTestingIndex !== idx">Verify SMTP</span>
+                                            <span x-show="bulkTestingIndex === idx">Testing...</span>
+                                        </button>
+                                        <button type="button" @click="removeBulkRow(idx)" class="px-2 py-1 rounded-md text-[11px] text-red-300 hover:text-red-200 hover:bg-red-500/10 border border-red-500/20">Remove</button>
+                                    </div>
+                                    <div class="mt-1.5" x-show="row._smtpCheck">
+                                        <span class="text-[10px]" :class="row._smtpCheck?.success ? 'text-emerald-400' : 'text-red-400'" x-text="row._smtpCheck?.success ? 'SMTP verified' : 'SMTP failed'"></span>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -414,6 +423,7 @@ function sendersPage() {
         importResult: null,
         bulkRows: [],
         bulkSaving: false,
+        bulkTestingIndex: null,
         bulkResult: null,
         form: {},
 
@@ -477,6 +487,7 @@ function sendersPage() {
                 imap_password: '',
                 imap_encryption: 'ssl',
                 warmup_target_daily: 20,
+                _smtpCheck: null,
             };
         },
 
@@ -497,6 +508,7 @@ function sendersPage() {
                 smtp_password: '',
                 imap_username: '',
                 imap_password: '',
+                _smtpCheck: null,
             });
         },
 
@@ -769,6 +781,59 @@ function sendersPage() {
                 showToast(`Sender ${action}d`);
                 await this.load();
             } catch(e) { showToast('Error', 'error'); }
+        },
+
+        async verifyBulkRowSmtp(row, index) {
+            const missing = [];
+            if (!String(row.email_address || '').trim()) missing.push('email');
+            if (!String(row.smtp_host || '').trim()) missing.push('smtp_host');
+            if (!row.smtp_port) missing.push('smtp_port');
+            if (!String(row.smtp_username || '').trim()) missing.push('smtp_username');
+            if (!String(row.smtp_password || '').trim()) missing.push('smtp_password');
+
+            if (missing.length) {
+                showToast('Missing required fields for SMTP test: ' + missing.join(', '), 'error');
+                return;
+            }
+
+            const target = prompt(
+                'Optional recipient for a real test email.\nLeave empty to only verify SMTP connection.',
+                ''
+            );
+            if (target === null) return;
+
+            this.bulkTestingIndex = index;
+
+            try {
+                const testEmail = (target || '').trim();
+                const payload = {
+                    email_address: String(row.email_address || '').trim(),
+                    smtp_host: String(row.smtp_host || '').trim(),
+                    smtp_port: Number(row.smtp_port),
+                    smtp_username: String(row.smtp_username || '').trim(),
+                    smtp_password: String(row.smtp_password || ''),
+                    smtp_encryption: String(row.smtp_encryption || 'tls').trim().toLowerCase(),
+                    test_email: testEmail || null,
+                };
+
+                const res = await apiCall('/api/warmup/sender-mailboxes/test-smtp-credentials', 'POST', payload);
+                row._smtpCheck = {
+                    success: !!res.success,
+                    message: res.message || (res.success ? 'SMTP verified' : 'SMTP failed'),
+                    tested_at: new Date().toISOString(),
+                };
+
+                showToast(row._smtpCheck.message, row._smtpCheck.success ? 'success' : 'error');
+            } catch (e) {
+                row._smtpCheck = {
+                    success: false,
+                    message: e.message || 'SMTP test failed',
+                    tested_at: new Date().toISOString(),
+                };
+                showToast('SMTP test failed: ' + row._smtpCheck.message, 'error');
+            } finally {
+                this.bulkTestingIndex = null;
+            }
         },
 
         async saveBulkSenders() {

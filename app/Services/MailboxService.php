@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Crypt;
 
 class MailboxService
 {
+    private const SMTP_TEST_TIMEOUT_SECONDS = 12.0;
+
     public function create(array $data): SenderMailbox
     {
         $domain = $this->resolveOrCreateDomain($data['email_address']);
@@ -121,6 +123,7 @@ class MailboxService
                 $mailbox->smtp_port ?: 587,
                 $mailbox->smtp_encryption === 'ssl' // true=implicit TLS (port 465), false=STARTTLS (port 587)
             );
+            $transport->getStream()->setTimeout(self::SMTP_TEST_TIMEOUT_SECONDS);
             $transport->setUsername($mailbox->smtp_username);
             $transport->setPassword($password);
             $transport->start();
@@ -158,6 +161,75 @@ class MailboxService
                 'last_smtp_test_result' => 'fail',
             ]);
 
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function testSmtpCredentials(array $credentials, ?string $testEmail = null): array
+    {
+        try {
+            $smtpHost = trim((string) ($credentials['smtp_host'] ?? ''));
+            $smtpPort = (int) ($credentials['smtp_port'] ?? 0);
+            $smtpUsername = trim((string) ($credentials['smtp_username'] ?? ''));
+            $smtpPassword = (string) ($credentials['smtp_password'] ?? '');
+            $smtpEncryption = strtolower(trim((string) ($credentials['smtp_encryption'] ?? 'tls')));
+            $fromEmail = trim((string) ($credentials['email_address'] ?? $smtpUsername));
+
+            if ($smtpHost === '' || str_contains($smtpHost, '@')) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid SMTP host. Use server host like smtp.gmail.com or smtp.office365.com (not an email address).',
+                ];
+            }
+
+            if ($smtpPort <= 0 || $smtpUsername === '' || $smtpPassword === '') {
+                return [
+                    'success' => false,
+                    'message' => 'SMTP port, username, and password are required to verify SMTP.',
+                ];
+            }
+
+            if (!in_array($smtpEncryption, ['tls', 'ssl', 'none'], true)) {
+                return [
+                    'success' => false,
+                    'message' => 'SMTP encryption must be one of: tls, ssl, none.',
+                ];
+            }
+
+            $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
+                $smtpHost,
+                $smtpPort,
+                $smtpEncryption === 'ssl'
+            );
+            $transport->getStream()->setTimeout(self::SMTP_TEST_TIMEOUT_SECONDS);
+            $transport->setUsername($smtpUsername);
+            $transport->setPassword($smtpPassword);
+            $transport->start();
+
+            $testEmail = trim((string) ($testEmail ?? ''));
+            if ($testEmail !== '') {
+                $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+                $email = (new \Symfony\Component\Mime\Email())
+                    ->from($fromEmail)
+                    ->to($testEmail)
+                    ->subject('MailPilot SMTP Credential Test - ' . now()->format('Y-m-d H:i:s'))
+                    ->text("This is a MailPilot SMTP credential test message.\n\nSender: {$fromEmail}\nSMTP Host: {$smtpHost}\nTime: " . now()->toDateTimeString())
+                    ->html('<p>This is a <strong>MailPilot SMTP credential test message</strong>.</p><p>Sender: ' . e($fromEmail) . '<br>SMTP Host: ' . e($smtpHost) . '<br>Time: ' . e(now()->toDateTimeString()) . '</p>');
+
+                $mailer->send($email);
+            }
+
+            $transport->stop();
+
+            return [
+                'success' => true,
+                'test_email_sent' => $testEmail !== '',
+                'test_email' => $testEmail !== '' ? $testEmail : null,
+                'message' => $testEmail !== ''
+                    ? "SMTP connected and test email sent to {$testEmail}"
+                    : 'SMTP connection successful',
+            ];
+        } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }

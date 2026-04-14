@@ -41,6 +41,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
 
     // Sender Mailboxes
     Route::post('sender-mailboxes/bulk', [\App\Http\Controllers\Api\SenderMailboxController::class, 'bulkStore']);
+    Route::post('sender-mailboxes/test-smtp-credentials', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testSmtpCredentials']);
     Route::apiResource('sender-mailboxes', \App\Http\Controllers\Api\SenderMailboxController::class);
     Route::post('sender-mailboxes/{id}/test-smtp', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testSmtp']);
     Route::post('sender-mailboxes/{id}/test-imap', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testImap']);
