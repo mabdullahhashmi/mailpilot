@@ -73,6 +73,7 @@
                     <div class="text-right">
                         <p class="text-lg font-bold" :class="s.health_score >= 80 ? 'text-emerald-400' : s.health_score >= 50 ? 'text-amber-400' : 'text-red-400'" x-text="s.health_score ?? '—'"></p>
                         <p class="text-zinc-600 text-[10px] uppercase tracking-wider">Score</p>
+                        <p class="text-[10px] mt-1" :class="(s.trend?.delta || 0) > 0 ? 'text-emerald-400' : (s.trend?.delta || 0) < 0 ? 'text-red-400' : 'text-zinc-500'" x-text="(s.trend?.delta || 0) > 0 ? ('+' + s.trend.delta + ' today') : ((s.trend?.delta || 0) < 0 ? (s.trend.delta + ' today') : 'No change')"></p>
                     </div>
                 </div>
 
@@ -153,6 +154,59 @@
                 </div>
             </div>
 
+            <!-- Health Increase/Decrease Drivers -->
+            <div class="glass-light rounded-xl p-4 mb-6">
+                <h4 class="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">Health Movement Drivers</h4>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div class="rounded-lg bg-white/[0.03] p-3 text-center">
+                        <p class="text-lg font-bold text-white" x-text="detail.health_overview?.current_score ?? detail.health_score ?? 0"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Current Score</p>
+                    </div>
+                    <div class="rounded-lg bg-white/[0.03] p-3 text-center">
+                        <p class="text-lg font-bold" :class="(detail.health_overview?.score_change || 0) > 0 ? 'text-emerald-400' : (detail.health_overview?.score_change || 0) < 0 ? 'text-red-400' : 'text-zinc-300'" x-text="(detail.health_overview?.score_change || 0) > 0 ? ('+' + detail.health_overview.score_change) : (detail.health_overview?.score_change || 0)"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Change vs Prev</p>
+                    </div>
+                    <div class="rounded-lg bg-white/[0.03] p-3 text-center">
+                        <p class="text-sm font-semibold" :class="detail.health_overview?.trend === 'up' ? 'text-emerald-400' : detail.health_overview?.trend === 'down' ? 'text-red-400' : 'text-zinc-300'" x-text="detail.health_overview?.trend === 'up' ? 'Improving' : detail.health_overview?.trend === 'down' ? 'Declining' : 'Stable'"></p>
+                        <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Trend</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-300 mb-2">Increasing Points</p>
+                        <div class="space-y-2" x-show="(detail.health_overview?.increasing_points || []).length">
+                            <template x-for="p in detail.health_overview?.increasing_points || []" :key="p.title + '-inc'">
+                                <div>
+                                    <p class="text-xs font-semibold text-emerald-300" x-text="'+' + p.points + ' - ' + p.title"></p>
+                                    <p class="text-[10px] text-emerald-100/80" x-text="p.detail"></p>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="!(detail.health_overview?.increasing_points || []).length" class="text-[11px] text-emerald-100/60">No positive signals yet.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-red-500/20 bg-red-500/[0.06] p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-red-300 mb-2">Decreasing Points</p>
+                        <div class="space-y-2" x-show="(detail.health_overview?.decreasing_points || []).length">
+                            <template x-for="p in detail.health_overview?.decreasing_points || []" :key="p.title + '-dec'">
+                                <div>
+                                    <p class="text-xs font-semibold text-red-300" x-text="'-' + p.points + ' - ' + p.title"></p>
+                                    <p class="text-[10px] text-red-100/80" x-text="p.detail"></p>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="!(detail.health_overview?.decreasing_points || []).length" class="text-[11px] text-red-100/60">No negative signals right now.</p>
+                    </div>
+                </div>
+
+                <p class="mt-3 text-[10px] text-zinc-500" x-text="detail.health_overview?.tracking_scope || ''"></p>
+                     <p class="mt-1 text-[10px] text-zinc-600" x-show="detail.health_overview?.sync"
+                         x-text="'Sync touched: thread ' + (detail.health_overview?.sync?.thread_days_touched ?? 0) + ' day(s), flow test ' + (detail.health_overview?.sync?.flow_test_days_touched ?? 0) + ' day(s), IMAP ' + (detail.health_overview?.sync?.imap_days_touched ?? 0) + ' day(s)'">
+                     </p>
+            </div>
+
             <!-- Health Trend Chart -->
             <div class="glass-light rounded-xl p-4 mb-6">
                 <h4 class="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">Health Trend (60 Days)</h4>
@@ -173,6 +227,7 @@
                             <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Replied</th>
                             <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Failed</th>
                             <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Score</th>
+                            <th class="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Change</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -185,6 +240,9 @@
                                 <td class="px-4 py-2 text-xs text-red-400" x-text="h.failed_events || 0"></td>
                                 <td class="px-4 py-2">
                                     <span class="text-xs font-bold" :class="(h.health_score || 0) >= 80 ? 'text-emerald-400' : (h.health_score || 0) >= 50 ? 'text-amber-400' : 'text-red-400'" x-text="h.health_score ?? '—'"></span>
+                                </td>
+                                <td class="px-4 py-2">
+                                    <span class="text-xs font-bold" :class="(h.score_delta || 0) > 0 ? 'text-emerald-400' : (h.score_delta || 0) < 0 ? 'text-red-400' : 'text-zinc-500'" x-text="(h.score_delta || 0) > 0 ? ('+' + h.score_delta) : (h.score_delta || 0)"></span>
                                 </td>
                             </tr>
                         </template>
@@ -213,7 +271,7 @@ function senderHealthPage() {
         async load() {
             this.loading = true;
             try {
-                const data = await apiCall('/api/warmup/sender-health');
+                const data = await apiCall('/api/warmup/sender-health?t=' + Date.now());
                 this.senders = data.senders || data || [];
                 this.summary = {
                     healthy: this.senders.filter(s => (s.health_score || 0) >= 80).length,
@@ -227,7 +285,7 @@ function senderHealthPage() {
 
         async selectSender(id) {
             try {
-                const data = await apiCall(`/api/warmup/sender-health/${id}`);
+                const data = await apiCall(`/api/warmup/sender-health/${id}?t=${Date.now()}`);
                 this.detail = data;
                 this.showDetail = true;
                 this.$nextTick(() => {

@@ -40,6 +40,32 @@ class DeliverabilityController extends Controller
         try { $reputation = $this->reputationService->getDashboardData(); } catch (\Throwable $e) {}
         try { $strategy = $this->strategyService->getDashboardData(); } catch (\Throwable $e) {}
 
+        $placementTotal = (int) ($placement['total_inbox'] ?? 0)
+            + (int) ($placement['total_spam'] ?? 0)
+            + (int) ($placement['total_missing'] ?? 0);
+
+        $placement['inbox_rate'] = $placementTotal > 0
+            ? round(((int) ($placement['total_inbox'] ?? 0) / $placementTotal) * 100, 1)
+            : 0;
+        $placement['spam_rate'] = $placementTotal > 0
+            ? round(((int) ($placement['total_spam'] ?? 0) / $placementTotal) * 100, 1)
+            : 0;
+        $placement['missing_rate'] = $placementTotal > 0
+            ? round(((int) ($placement['total_missing'] ?? 0) / $placementTotal) * 100, 1)
+            : 0;
+
+        $placementBySender = collect($strategy['sender_caps'] ?? [])->map(function ($s) {
+            return [
+                'id' => $s['id'] ?? null,
+                'email' => $s['email'] ?? null,
+                'score' => isset($s['placement']) ? (float) $s['placement'] : null,
+                'inbox' => (int) ($s['placement_inbox'] ?? 0),
+                'spam' => (int) ($s['placement_spam'] ?? 0),
+                'missing' => (int) ($s['placement_missing'] ?? 0),
+                'last_test_at' => $s['last_placement_test_at'] ?? null,
+            ];
+        })->values()->toArray();
+
         // Overall risk assessment
         $avgPlacement = $placement['avg_score'] ?? 0;
         $totalBounces = $bounces['total'] ?? 0;
@@ -57,9 +83,18 @@ class DeliverabilityController extends Controller
         return response()->json([
             'overall_status' => $overallStatus,
             'placement' => $placement,
+            'placement_by_sender' => $placementBySender,
             'bounces' => $bounces,
             'reputation' => $reputation,
             'strategy' => $strategy,
+            'data_quality' => [
+                'placement_tests_7d' => (int) ($placement['total_tests'] ?? 0),
+                'placement_results_7d' => $placementTotal,
+                'bounce_events_7d' => (int) ($bounces['total'] ?? 0),
+                'reputation_domain_rows' => (int) (($reputation['domains']['count'] ?? 0)),
+                'reputation_sender_rows' => (int) (($reputation['senders']['count'] ?? 0)),
+                'strategy_logs_today' => (int) (($strategy['todays_recommendations']['total'] ?? 0)),
+            ],
             'senders' => SenderMailbox::where('status', 'active')
                 ->get(['id', 'email_address'])
                 ->map(fn ($s) => ['id' => $s->id, 'email' => $s->email_address])

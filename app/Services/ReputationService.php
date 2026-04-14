@@ -278,22 +278,116 @@ class ReputationService
             ->where('score_date', today())
             ->get();
 
+        $domains = Domain::where('status', 'active')
+            ->orderBy('domain_name')
+            ->get([
+                'id',
+                'domain_name',
+                'reputation_score',
+                'reputation_risk_level',
+                'spf_status',
+                'dkim_status',
+                'dmarc_status',
+                'mx_status',
+                'last_reputation_scan_at',
+            ]);
+
+        $senders = SenderMailbox::where('status', 'active')
+            ->orderBy('email_address')
+            ->get([
+                'id',
+                'email_address',
+                'reputation_score',
+                'reputation_risk',
+                'placement_score',
+                'last_reputation_scan_at',
+            ]);
+
+        $domainScoreMap = $domainScores->keyBy('domain_id');
+        $senderScoreMap = $senderScores->keyBy('sender_mailbox_id');
+
+        $domainRows = $domains->map(function ($domain) use ($domainScoreMap) {
+            $scoreRow = $domainScoreMap->get($domain->id);
+
+            return [
+                'id' => $domain->id,
+                'name' => $domain->domain_name,
+                'reputation_score' => $scoreRow
+                    ? (int) $scoreRow->overall_score
+                    : (int) ($domain->reputation_score ?? 0),
+                'risk_level' => $scoreRow
+                    ? $scoreRow->risk_level
+                    : ($domain->reputation_risk_level ?? 'low'),
+                'dns' => [
+                    'spf' => $domain->spf_status,
+                    'dkim' => $domain->dkim_status,
+                    'dmarc' => $domain->dmarc_status,
+                    'mx' => $domain->mx_status,
+                ],
+                'last_scan_at' => $domain->last_reputation_scan_at?->format('Y-m-d H:i'),
+                'score_source' => $scoreRow ? 'reputation_scores_today' : 'domain_fallback',
+            ];
+        })->values();
+
+        $senderRows = $senders->map(function ($sender) use ($senderScoreMap) {
+            $scoreRow = $senderScoreMap->get($sender->id);
+
+            return [
+                'id' => $sender->id,
+                'email' => $sender->email_address,
+                'reputation_score' => $scoreRow
+                    ? (int) $scoreRow->overall_score
+                    : (int) ($sender->reputation_score ?? 0),
+                'risk_level' => $scoreRow
+                    ? $scoreRow->risk_level
+                    : ($sender->reputation_risk ?? 'low'),
+                'placement_score' => $sender->placement_score !== null ? (float) $sender->placement_score : null,
+                'last_scan_at' => $sender->last_reputation_scan_at?->format('Y-m-d H:i'),
+                'score_source' => $scoreRow ? 'reputation_scores_today' : 'sender_fallback',
+            ];
+        })->values();
+
+        $domainAvg = $domainRows->avg('reputation_score') ?? 0;
+        $senderAvg = $senderRows->avg('reputation_score') ?? 0;
+
+        $domainRiskCounts = [
+            'critical' => $domainRows->where('risk_level', 'critical')->count(),
+            'high' => $domainRows->where('risk_level', 'high')->count(),
+            'medium' => $domainRows->where('risk_level', 'medium')->count(),
+            'low' => $domainRows->where('risk_level', 'low')->count(),
+        ];
+
+        $senderRiskCounts = [
+            'critical' => $senderRows->where('risk_level', 'critical')->count(),
+            'high' => $senderRows->where('risk_level', 'high')->count(),
+            'medium' => $senderRows->where('risk_level', 'medium')->count(),
+            'low' => $senderRows->where('risk_level', 'low')->count(),
+        ];
+
         return [
             'domains' => [
-                'count' => $domainScores->count(),
-                'avg_score' => $domainScores->avg('overall_score') ? round($domainScores->avg('overall_score'), 1) : 0,
-                'critical' => $domainScores->where('risk_level', 'critical')->count(),
-                'high' => $domainScores->where('risk_level', 'high')->count(),
-                'medium' => $domainScores->where('risk_level', 'medium')->count(),
-                'low' => $domainScores->where('risk_level', 'low')->count(),
+                'count' => $domainRows->count(),
+                'avg_score' => round($domainAvg, 1),
+                'critical' => $domainRiskCounts['critical'],
+                'high' => $domainRiskCounts['high'],
+                'medium' => $domainRiskCounts['medium'],
+                'low' => $domainRiskCounts['low'],
             ],
             'senders' => [
-                'count' => $senderScores->count(),
-                'avg_score' => $senderScores->avg('overall_score') ? round($senderScores->avg('overall_score'), 1) : 0,
-                'critical' => $senderScores->where('risk_level', 'critical')->count(),
-                'high' => $senderScores->where('risk_level', 'high')->count(),
-                'medium' => $senderScores->where('risk_level', 'medium')->count(),
-                'low' => $senderScores->where('risk_level', 'low')->count(),
+                'count' => $senderRows->count(),
+                'avg_score' => round($senderAvg, 1),
+                'critical' => $senderRiskCounts['critical'],
+                'high' => $senderRiskCounts['high'],
+                'medium' => $senderRiskCounts['medium'],
+                'low' => $senderRiskCounts['low'],
+            ],
+            'domains_list' => $domainRows->toArray(),
+            'senders_list' => $senderRows->toArray(),
+            'score_source' => [
+                'domain_scores_today' => $domainScores->count(),
+                'sender_scores_today' => $senderScores->count(),
+                'using_fallback_for_domains' => $domainRows->where('score_source', 'domain_fallback')->count(),
+                'using_fallback_for_senders' => $senderRows->where('score_source', 'sender_fallback')->count(),
             ],
             'dns_changes_7d' => DnsAuditLog::where('created_at', '>=', now()->subDays(7))->count(),
             'recent_dns_alerts' => DnsAuditLog::where('previous_status', 'pass')

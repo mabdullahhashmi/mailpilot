@@ -60,8 +60,8 @@
         </div>
         <div class="glass rounded-xl p-4 stat-card">
             <p class="text-zinc-500 text-[11px] uppercase tracking-wider font-medium">Inbox Rate</p>
-            <p class="text-emerald-400 text-2xl font-bold mt-1" x-text="overview?.placement?.total_inbox || 0"></p>
-            <p class="text-[11px] text-zinc-500 mt-1">landed in inbox</p>
+            <p class="text-emerald-400 text-2xl font-bold mt-1" x-text="(overview?.placement?.inbox_rate || 0) + '%'"></p>
+            <p class="text-[11px] text-zinc-500 mt-1" x-text="(overview?.placement?.total_inbox || 0) + ' inbox of ' + ((overview?.placement?.total_inbox || 0) + (overview?.placement?.total_spam || 0) + (overview?.placement?.total_missing || 0))"></p>
         </div>
         <div class="glass rounded-xl p-4 stat-card">
             <p class="text-zinc-500 text-[11px] uppercase tracking-wider font-medium">Spam / Missing</p>
@@ -122,18 +122,18 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="s in overview?.strategy?.sender_caps || []" :key="s.id">
+                        <template x-for="s in overview?.placement_by_sender || []" :key="s.id">
                             <tr class="border-b border-white/5 hover:bg-white/[0.02] transition">
                                 <td class="px-5 py-3">
                                     <span class="text-white text-sm font-medium" x-text="s.email"></span>
                                 </td>
                                 <td class="px-5 py-3 text-center">
-                                    <span class="text-sm font-bold" :class="(s.placement || 0) >= 70 ? 'text-emerald-400' : (s.placement || 0) >= 40 ? 'text-amber-400' : s.placement !== null ? 'text-red-400' : 'text-zinc-500'" x-text="s.placement !== null ? s.placement + '%' : '--'"></span>
+                                    <span class="text-sm font-bold" :class="(s.score || 0) >= 70 ? 'text-emerald-400' : (s.score || 0) >= 40 ? 'text-amber-400' : s.score !== null ? 'text-red-400' : 'text-zinc-500'" x-text="s.score !== null ? s.score + '%' : '--'"></span>
                                 </td>
-                                <td class="px-5 py-3 text-center text-emerald-400 text-sm" x-text="'—'"></td>
-                                <td class="px-5 py-3 text-center text-red-400 text-sm" x-text="'—'"></td>
-                                <td class="px-5 py-3 text-center text-zinc-400 text-sm" x-text="'—'"></td>
-                                <td class="px-5 py-3 text-center text-zinc-500 text-xs" x-text="'—'"></td>
+                                <td class="px-5 py-3 text-center text-emerald-400 text-sm" x-text="s.inbox || 0"></td>
+                                <td class="px-5 py-3 text-center text-red-400 text-sm" x-text="s.spam || 0"></td>
+                                <td class="px-5 py-3 text-center text-zinc-400 text-sm" x-text="s.missing || 0"></td>
+                                <td class="px-5 py-3 text-center text-zinc-500 text-xs" x-text="s.last_test_at || 'No test yet'"></td>
                                 <td class="px-5 py-3 text-right">
                                     <button @click="runSinglePlacement(s.id)" class="text-xs text-blue-400 hover:text-blue-300 font-medium">Test</button>
                                 </td>
@@ -142,7 +142,7 @@
                     </tbody>
                 </table>
             </div>
-            <div x-show="!overview?.strategy?.sender_caps?.length" class="p-10 text-center text-zinc-500 text-sm">
+            <div x-show="!overview?.placement_by_sender?.length" class="p-10 text-center text-zinc-500 text-sm">
                 No active senders found. Add senders to run placement tests.
             </div>
         </div>
@@ -681,6 +681,7 @@ function deliverabilityPage() {
             try {
                 const res = await fetch('/api/warmup/deliverability/overview');
                 this.overview = await res.json();
+                this.domainReputations = this.overview?.reputation?.domains_list || [];
                 this.lastScan = new Date().toLocaleTimeString();
             } catch (e) {
                 console.error('Failed to load overview:', e);
@@ -698,20 +699,14 @@ function deliverabilityPage() {
 
         async loadDomainReputations() {
             try {
-                const res = await fetch('/api/warmup/dns-health');
+                if (this.overview?.reputation?.domains_list?.length) {
+                    this.domainReputations = this.overview.reputation.domains_list;
+                    return;
+                }
+
+                const res = await fetch('/api/warmup/deliverability/reputation');
                 const data = await res.json();
-                this.domainReputations = (data.domains || data || []).map(d => ({
-                    id: d.id,
-                    name: d.domain_name,
-                    reputation_score: d.reputation_score || d.domain_health_score || 0,
-                    risk_level: d.reputation_risk_level || 'low',
-                    dns: {
-                        spf: d.spf_status,
-                        dkim: d.dkim_status,
-                        dmarc: d.dmarc_status,
-                        mx: d.mx_status,
-                    }
-                }));
+                this.domainReputations = data?.domains_list || [];
             } catch (e) {
                 console.error('Failed to load domain reputations:', e);
             }
@@ -832,22 +827,23 @@ function deliverabilityPage() {
         updateBadges() {
             if (!this.overview) return;
             // Placement badge
-            const placementBad = (this.overview.placement_tests || []).filter(t => t.inbox_rate < 70).length;
+            const placementBad = (this.overview.placement_by_sender || []).filter(s => s.score !== null && s.score < 70).length;
             this.tabs[0].badge = placementBad > 0 ? placementBad : null;
             this.tabs[0].badgeColor = placementBad > 0 ? 'bg-red-500' : '';
 
             // Bounce badge
-            const bounceCount = this.overview.total_bounces || this.bounceData?.total_bounces || 0;
+            const bounceCount = this.overview?.bounces?.total || 0;
             this.tabs[1].badge = bounceCount > 0 ? bounceCount : null;
             this.tabs[1].badgeColor = bounceCount > 0 ? 'bg-amber-500' : '';
 
             // Reputation badge
-            const reputationIssues = this.domainReputations.filter(d => d.reputation_score < 60).length;
+            const reputationIssues = this.domainReputations.filter(d => (d.reputation_score || 0) < 60).length;
             this.tabs[2].badge = reputationIssues > 0 ? reputationIssues : null;
             this.tabs[2].badgeColor = reputationIssues > 0 ? 'bg-orange-500' : '';
 
             // Strategy badge
-            const pending = (this.overview.strategy_recommendations || []).filter(s => s.recommendation !== 'maintain').length;
+            const recs = this.overview?.strategy?.todays_recommendations || {};
+            const pending = (recs.ramp_up || 0) + (recs.slow_down || 0) + (recs.pause || 0) + (recs.resume || 0);
             this.tabs[3].badge = pending > 0 ? pending : null;
             this.tabs[3].badgeColor = pending > 0 ? 'bg-blue-500' : '';
         },

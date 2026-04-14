@@ -72,6 +72,53 @@ Artisan::command('warmup:status', function () {
     if ($templates === 0) $this->error('WARNING: No content templates! Run: php artisan warmup:seed-templates');
 })->purpose('Show warmup system status (campaigns, events, seeds, templates)');
 
+Artisan::command('warmup:sync-sender-health {--days=60}', function () {
+    $days = max(1, (int) $this->option('days'));
+
+    $senders = \App\Models\SenderMailbox::orderBy('id')->get();
+    if ($senders->isEmpty()) {
+        $this->warn('No sender mailboxes found.');
+        return;
+    }
+
+    $health = app(\App\Services\HealthService::class);
+    $reporting = app(\App\Services\ReportingService::class);
+
+    $this->info("Syncing sender health for {$senders->count()} sender(s) over last {$days} day(s)...");
+    $this->newLine();
+
+    foreach ($senders as $sender) {
+        try {
+            $threadDays = $health->syncHealthLogsFromMessages($sender, $days);
+            $flowDays = $health->syncHealthLogsFromFlowTests($sender, $days);
+            $imapDays = $health->syncHealthLogsFromImap($sender, $days);
+
+            $latestLog = \App\Models\MailboxHealthLog::where('sender_mailbox_id', $sender->id)
+                ->orderBy('log_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->first();
+
+            $score = 0;
+            if ($latestLog) {
+                $score = (int) (($health->calculateSenderHealthBreakdown($sender, $latestLog)['score'] ?? 0));
+            }
+
+            $report = $reporting->senderReport($sender);
+
+            $this->line("Sender #{$sender->id} {$sender->email_address}");
+            $this->line("  Sync touched: thread={$threadDays} day(s), flow_test={$flowDays} day(s), imap={$imapDays} day(s)");
+            $this->line("  30d stats: sent={$report['total_sends_30d']}, replied={$report['total_replies_30d']}, bounced={$report['total_bounces_30d']}");
+            $this->line("  Health score: {$score}");
+        } catch (\Throwable $e) {
+            $this->error("Sender #{$sender->id} {$sender->email_address} failed: " . $e->getMessage());
+        }
+
+        $this->newLine();
+    }
+
+    $this->info('Sender health sync completed.');
+})->purpose('Force-sync sender health logs from tracked events and IMAP mailbox activity');
+
 /*
 |--------------------------------------------------------------------------
 | Warmup Engine Scheduled Commands

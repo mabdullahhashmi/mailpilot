@@ -66,7 +66,7 @@ class SendingStrategyService
             ->where('is_warmup_enabled', true)
             ->get();
 
-        $results = ['analyzed' => 0, 'ramp_up' => 0, 'slow_down' => 0, 'maintain' => 0, 'pause' => 0];
+        $results = ['analyzed' => 0, 'ramp_up' => 0, 'slow_down' => 0, 'maintain' => 0, 'pause' => 0, 'resume' => 0];
 
         foreach ($senders as $sender) {
             try {
@@ -115,6 +115,15 @@ class SendingStrategyService
             ->where('is_warmup_enabled', true)
             ->get(['id', 'email_address', 'daily_send_cap', 'current_warmup_day', 'reputation_score', 'placement_score']);
 
+        $senderIds = $senders->pluck('id')->all();
+        $latestPlacementTests = PlacementTest::whereIn('sender_mailbox_id', $senderIds)
+            ->where('status', 'completed')
+            ->orderByDesc('completed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('sender_mailbox_id')
+            ->keyBy('sender_mailbox_id');
+
         return [
             'todays_recommendations' => [
                 'total' => $today->count(),
@@ -122,15 +131,26 @@ class SendingStrategyService
                 'slow_down' => $today->where('recommendation', 'slow_down')->count(),
                 'maintain' => $today->where('recommendation', 'maintain')->count(),
                 'pause' => $today->where('recommendation', 'pause')->count(),
+                'resume' => $today->where('recommendation', 'resume')->count(),
             ],
-            'sender_caps' => $senders->map(fn ($s) => [
-                'id' => $s->id,
-                'email' => $s->email_address,
-                'daily_cap' => $s->daily_send_cap,
-                'warmup_day' => $s->current_warmup_day,
-                'reputation' => $s->reputation_score,
-                'placement' => $s->placement_score,
-            ])->values()->toArray(),
+            'sender_caps' => $senders->map(function ($s) use ($latestPlacementTests) {
+                $latestTest = $latestPlacementTests->get($s->id);
+
+                return [
+                    'id' => $s->id,
+                    'email' => $s->email_address,
+                    'daily_cap' => $s->daily_send_cap,
+                    'warmup_day' => $s->current_warmup_day,
+                    'reputation' => $s->reputation_score,
+                    'placement' => $latestTest?->placement_score !== null
+                        ? (float) $latestTest->placement_score
+                        : ($s->placement_score !== null ? (float) $s->placement_score : null),
+                    'placement_inbox' => (int) ($latestTest?->inbox_count ?? 0),
+                    'placement_spam' => (int) ($latestTest?->spam_count ?? 0),
+                    'placement_missing' => (int) ($latestTest?->missing_count ?? 0),
+                    'last_placement_test_at' => $latestTest?->completed_at?->format('Y-m-d H:i'),
+                ];
+            })->values()->toArray(),
             'recent_changes' => SendingStrategyLog::where('was_applied', true)
                 ->orderByDesc('created_at')
                 ->take(10)
