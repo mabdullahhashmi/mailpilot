@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Log;
 
 class PlacementTestService
 {
+    private const MAX_SEEDS_PER_TEST = 8;
+    private const SMTP_TIMEOUT_SECONDS = 12.0;
+    private const IMAP_TIMEOUT_SECONDS = 8;
+
     /**
      * Run an inbox placement test for a sender against all active seeds.
      */
@@ -31,7 +35,7 @@ class PlacementTestService
             $seeds = SeedMailbox::where('status', 'active')
                 ->whereNotNull('imap_host')
                 ->whereNotNull('imap_password')
-                ->take(20)
+                ->take(self::MAX_SEEDS_PER_TEST)
                 ->get();
 
             if ($seeds->isEmpty()) {
@@ -307,6 +311,7 @@ class PlacementTestService
             $sender->smtp_port,
             $sender->smtp_encryption === 'tls'
         );
+        $transport->getStream()->setTimeout(self::SMTP_TIMEOUT_SECONDS);
         $transport->setUsername($sender->smtp_username);
         $transport->setPassword($password);
 
@@ -322,6 +327,10 @@ class PlacementTestService
 
     private function connectImap(SeedMailbox $seed): mixed
     {
+        if (!function_exists('imap_open')) {
+            return false;
+        }
+
         $host = $seed->imap_host;
         $port = $seed->imap_port ?? 993;
         $encryption = $seed->imap_encryption ?? 'ssl';
@@ -335,6 +344,13 @@ class PlacementTestService
         $username = $seed->imap_username ?? $seed->email_address;
         $flags = $encryption === 'ssl' ? '/imap/ssl/novalidate-cert' : '/imap/notls';
         $path = "{{$host}:{$port}{$flags}}INBOX";
+
+        if (function_exists('imap_timeout')) {
+            @imap_timeout(IMAP_OPENTIMEOUT, self::IMAP_TIMEOUT_SECONDS);
+            @imap_timeout(IMAP_READTIMEOUT, self::IMAP_TIMEOUT_SECONDS);
+            @imap_timeout(IMAP_WRITETIMEOUT, self::IMAP_TIMEOUT_SECONDS);
+            @imap_timeout(IMAP_CLOSETIMEOUT, self::IMAP_TIMEOUT_SECONDS);
+        }
 
         try {
             $imap = @imap_open($path, $username, $password, 0, 1);
