@@ -9,6 +9,9 @@ namespace App\Services;
  */
 class SpintaxProcessor
 {
+    // Match single-brace spintax only, but ignore double-brace placeholders (e.g. {{sender_name}}).
+    private const SPINTAX_PATTERN = '/(?<!\{)\{([^{}]+)\}(?!\})/';
+
     /**
      * Process all spintax in text and return a randomized version.
      */
@@ -18,8 +21,8 @@ class SpintaxProcessor
         $maxIterations = 10; // Safety limit for nesting depth
         $iteration = 0;
 
-        while (preg_match('/\{[^{}]+\}/', $text) && $iteration < $maxIterations) {
-            $text = preg_replace_callback('/\{([^{}]+)\}/', function ($matches) {
+        while (preg_match(self::SPINTAX_PATTERN, $text) && $iteration < $maxIterations) {
+            $text = preg_replace_callback(self::SPINTAX_PATTERN, function ($matches) {
                 $options = explode('|', $matches[1]);
                 return trim($options[array_rand($options)]);
             }, $text);
@@ -40,7 +43,7 @@ class SpintaxProcessor
     {
         $count = 1;
 
-        preg_match_all('/\{([^{}]+)\}/', $text, $matches);
+        preg_match_all(self::SPINTAX_PATTERN, $text, $matches);
         foreach ($matches[1] as $match) {
             $options = explode('|', $match);
             $count *= count($options);

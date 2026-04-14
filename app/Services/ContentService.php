@@ -125,7 +125,11 @@ class ContentService
             return $this->spintax->process($raw);
         }
 
-        return $this->spintax->process($template->subject);
+        $subject = $template->subject;
+        $subject = $this->applyVariations($subject, $template);
+        $subject = $this->spintax->process($subject);
+
+        return $this->sanitizeResidualTemplateTokens($subject);
     }
 
     /**
@@ -139,9 +143,6 @@ class ContentService
 
         $body = $template->body;
 
-        // Apply spintax first
-        $body = $this->spintax->process($body);
-
         // Select random greeting
         $greetings = $template->greetings ?? ['Hi', 'Hello', 'Hey'];
         $greeting = $greetings[array_rand($greetings)];
@@ -150,18 +151,30 @@ class ContentService
         $signoffs = $template->signoffs ?? ['Best', 'Thanks', 'Regards'];
         $signoff = $signoffs[array_rand($signoffs)];
 
-        // Apply template variations
+        $senderName = $this->extractName($sender->email_address);
+        $recipientName = $this->extractName($recipient->email_address);
+
+        // Apply template variations before token replacement.
         $body = $this->applyVariations($body, $template);
 
-        // Replace placeholders
-        $body = str_replace([
-            '{{greeting}}', '{{signoff}}',
-            '{{sender_name}}', '{{recipient_name}}',
-        ], [
-            $greeting, $signoff,
-            $this->extractName($sender->email_address),
-            $this->extractName($recipient->email_address),
-        ], $body);
+        // Replace placeholders (supports both {{name}} and {{ name }} forms).
+        $body = $this->replaceCorePlaceholders($body, [
+            'greeting' => $greeting,
+            'signoff' => $signoff,
+            'sender_name' => $senderName,
+            'recipient_name' => $recipientName,
+        ]);
+
+        // Process spintax after placeholders are resolved.
+        $body = $this->spintax->process($body);
+
+        // Safety net: never allow raw template codes to leak into outbound body.
+        $body = $this->sanitizeResidualTemplateTokens($body, [
+            'greeting' => $greeting,
+            'signoff' => $signoff,
+            'sender_name' => $senderName,
+            'recipient_name' => $recipientName,
+        ]);
 
         // Record usage
         $template->update([
@@ -201,11 +214,54 @@ class ContentService
 
         foreach ($variations as $key => $options) {
             if (is_array($options) && !empty($options)) {
-                $text = str_replace("{{var:$key}}", $options[array_rand($options)], $text);
+                $replacement = $options[array_rand($options)];
+                $pattern = '/\{\{\s*var:' . preg_quote((string) $key, '/') . '\s*\}\}/i';
+                $text = preg_replace($pattern, (string) $replacement, $text);
             }
         }
 
+        // Replace unresolved variation tokens with a humanized fallback.
+        $text = preg_replace_callback('/\{\{\s*var:([a-z0-9_]+)\s*\}\}/i', function ($matches) {
+            $key = strtolower((string) ($matches[1] ?? ''));
+            return ucwords(str_replace('_', ' ', $key));
+        }, $text);
+
         return $text;
+    }
+
+    private function replaceCorePlaceholders(string $text, array $replacements): string
+    {
+        foreach ($replacements as $key => $value) {
+            $pattern = '/\{\{\s*' . preg_quote((string) $key, '/') . '\s*\}\}/i';
+            $text = preg_replace($pattern, (string) $value, $text);
+        }
+
+        return $text;
+    }
+
+    private function sanitizeResidualTemplateTokens(string $text, array $fallbacks = []): string
+    {
+        $fallbackGreeting = (string) ($fallbacks['greeting'] ?? 'Hi');
+        $fallbackSignoff = (string) ($fallbacks['signoff'] ?? 'Best');
+        $fallbackSenderName = (string) ($fallbacks['sender_name'] ?? 'Team');
+        $fallbackRecipientName = (string) ($fallbacks['recipient_name'] ?? 'there');
+
+        // Handle legacy/plain placeholders that may have leaked from prior rendering bugs.
+        $text = preg_replace('/\bsender_name\b/i', $fallbackSenderName, $text);
+        $text = preg_replace('/\brecipient_name\b/i', $fallbackRecipientName, $text);
+
+        // Replace line-leading "greeting," / "signoff," style placeholders.
+        $text = preg_replace('/(^|\n)\s*greeting\s*([,:\-])/i', '$1' . $fallbackGreeting . '$2', $text);
+        $text = preg_replace('/(^|\n)\s*signoff\s*([,:\-])/i', '$1' . $fallbackSignoff . '$2', $text);
+
+        // Remove any remaining unresolved mustache tokens.
+        $text = preg_replace('/\{\{\s*[^}]+\s*\}\}/', '', $text);
+
+        // Clean extra spaces introduced by token removal.
+        $text = preg_replace('/\s{2,}/', ' ', $text);
+        $text = preg_replace('/\s([.,!?;:])/', '$1', $text);
+
+        return trim((string) $text);
     }
 
     private function extractName(string $email): string
