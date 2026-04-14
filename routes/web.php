@@ -40,6 +40,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::get('/dashboard/activity-chart', [\App\Http\Controllers\Api\DashboardController::class, 'activityChart']);
 
     // Sender Mailboxes
+    Route::post('sender-mailboxes/bulk', [\App\Http\Controllers\Api\SenderMailboxController::class, 'bulkStore']);
     Route::apiResource('sender-mailboxes', \App\Http\Controllers\Api\SenderMailboxController::class);
     Route::post('sender-mailboxes/{id}/test-smtp', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testSmtp']);
     Route::post('sender-mailboxes/{id}/test-imap', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testImap']);

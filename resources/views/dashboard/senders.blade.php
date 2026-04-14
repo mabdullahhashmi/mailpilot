@@ -15,6 +15,9 @@
             <button @click="showImport = true" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/10 transition">
                 <i data-lucide="upload" class="w-4 h-4"></i> CSV Import
             </button>
+            <button @click="openBulkModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 transition">
+                <i data-lucide="table-2" class="w-4 h-4"></i> Bulk Table Add
+            </button>
             <button @click="showModal = true; editMode = false; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
                 <i data-lucide="plus" class="w-4 h-4"></i> Add Sender
             </button>
@@ -119,6 +122,137 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Bulk Table Modal -->
+    <div x-show="showBulkModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-overlay" @click.self="showBulkModal = false">
+        <div class="w-[min(98vw,1500px)] max-h-[94vh] overflow-y-auto glass rounded-2xl p-5 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-white font-semibold text-lg">Bulk Add Sender Mailboxes</h3>
+                    <p class="text-zinc-500 text-xs mt-1">Use one row per sender and set unique SMTP/IMAP host, port, username, password, and encryption.</p>
+                </div>
+                <button @click="showBulkModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="mb-4 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/25">
+                <p class="text-cyan-300 text-xs">Tip: choose provider to auto-fill common hosts/ports, then adjust any row manually for custom SMTP/IMAP setups.</p>
+            </div>
+
+            <div x-show="bulkResult" class="mb-4 p-3 rounded-xl" :class="bulkResult?.skipped > 0 ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-emerald-500/10 border border-emerald-500/25'">
+                <p class="text-sm font-medium" :class="bulkResult?.skipped > 0 ? 'text-amber-400' : 'text-emerald-400'">
+                    <span x-text="bulkResult?.imported || 0"></span> imported,
+                    <span x-text="bulkResult?.skipped || 0"></span> skipped
+                </p>
+                <template x-if="bulkResult?.errors?.length">
+                    <div class="mt-2 max-h-28 overflow-y-auto space-y-1">
+                        <template x-for="err in bulkResult.errors" :key="err">
+                            <p class="text-red-400/90 text-[11px]" x-text="err"></p>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <div class="flex items-center gap-2 mb-3">
+                <button type="button" @click="addBulkRow()" class="px-3 py-2 rounded-lg text-xs text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10">+ Add Row</button>
+                <button type="button" @click="duplicateLastBulkRow()" class="px-3 py-2 rounded-lg text-xs text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10">Duplicate Last</button>
+                <button type="button" @click="resetBulkRows()" class="px-3 py-2 rounded-lg text-xs text-zinc-300 bg-white/0 hover:bg-white/5 border border-white/10">Reset</button>
+                <span class="ml-auto text-[11px] text-zinc-500" x-text="bulkRows.length + ' row(s)'"></span>
+            </div>
+
+            <div class="overflow-x-auto border border-white/10 rounded-xl">
+                <table class="min-w-[1700px] w-full">
+                    <thead>
+                        <tr class="border-b border-white/10 bg-white/[0.02]">
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Email</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Provider</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">SMTP Host</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">SMTP Port</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">SMTP Username</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">SMTP Password</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">SMTP Enc.</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">IMAP Host</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">IMAP Port</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">IMAP Username</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">IMAP Password</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">IMAP Enc.</th>
+                            <th class="text-left px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Daily Target</th>
+                            <th class="text-right px-2 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(row, idx) in bulkRows" :key="idx">
+                            <tr class="border-b border-white/5 hover:bg-white/[0.02]">
+                                <td class="px-2 py-2">
+                                    <input type="email" x-model="row.email_address" @change="syncBulkUsernames(row)" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="sender@domain.com">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <select x-model="row.provider" @change="applyProviderDefaultsToRow(row)" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white">
+                                        <option value="">custom</option>
+                                        <option value="google">google</option>
+                                        <option value="microsoft">microsoft</option>
+                                        <option value="zoho">zoho</option>
+                                        <option value="yahoo">yahoo</option>
+                                    </select>
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.smtp_host" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="smtp.host.com">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="number" x-model.number="row.smtp_port" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="587">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.smtp_username" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="smtp username">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.smtp_password" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="smtp password/app password">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <select x-model="row.smtp_encryption" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white">
+                                        <option value="tls">tls</option>
+                                        <option value="ssl">ssl</option>
+                                        <option value="none">none</option>
+                                    </select>
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.imap_host" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="imap.host.com">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="number" x-model.number="row.imap_port" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="993">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.imap_username" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="imap username">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="text" x-model="row.imap_password" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" placeholder="imap password">
+                                </td>
+                                <td class="px-2 py-2">
+                                    <select x-model="row.imap_encryption" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white">
+                                        <option value="ssl">ssl</option>
+                                        <option value="tls">tls</option>
+                                        <option value="none">none</option>
+                                    </select>
+                                </td>
+                                <td class="px-2 py-2">
+                                    <input type="number" x-model.number="row.warmup_target_daily" class="input-dark w-full px-2 py-1.5 rounded-lg text-xs text-white" min="1" placeholder="20">
+                                </td>
+                                <td class="px-2 py-2 text-right">
+                                    <button type="button" @click="removeBulkRow(idx)" class="px-2 py-1 rounded-md text-[11px] text-red-300 hover:text-red-200 hover:bg-red-500/10 border border-red-500/20">Remove</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 mt-4">
+                <button type="button" @click="showBulkModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Close</button>
+                <button type="button" @click="saveBulkSenders()" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium" :disabled="bulkSaving">
+                    <span x-show="!bulkSaving">Create in Bulk</span>
+                    <span x-show="bulkSaving">Creating...</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -270,15 +404,21 @@ function sendersPage() {
         senders: [],
         showModal: false,
         showImport: false,
+        showBulkModal: false,
         editMode: false,
         editId: null,
         saving: false,
         importFile: null,
         importing: false,
         importResult: null,
+        bulkRows: [],
+        bulkSaving: false,
+        bulkResult: null,
         form: {},
 
         async init() {
+            this.resetForm();
+            this.resetBulkRows();
             await this.load();
             this.$nextTick(() => lucide.createIcons());
         },
@@ -311,6 +451,82 @@ function sendersPage() {
             if (this.form.email_address && !this.form.smtp_username) {
                 this.form.smtp_username = this.form.email_address;
                 this.form.imap_username = this.form.email_address;
+            }
+        },
+
+        openBulkModal() {
+            this.showBulkModal = true;
+            this.bulkResult = null;
+            if (!this.bulkRows.length) this.resetBulkRows();
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        newBulkRow() {
+            return {
+                email_address: '',
+                provider: '',
+                smtp_host: '',
+                smtp_port: 587,
+                smtp_username: '',
+                smtp_password: '',
+                smtp_encryption: 'tls',
+                imap_host: '',
+                imap_port: 993,
+                imap_username: '',
+                imap_password: '',
+                imap_encryption: 'ssl',
+                warmup_target_daily: 20,
+            };
+        },
+
+        resetBulkRows() {
+            this.bulkRows = [this.newBulkRow()];
+        },
+
+        addBulkRow() {
+            this.bulkRows.push(this.newBulkRow());
+        },
+
+        duplicateLastBulkRow() {
+            const last = this.bulkRows[this.bulkRows.length - 1] || this.newBulkRow();
+            this.bulkRows.push({
+                ...last,
+                email_address: '',
+                smtp_username: '',
+                smtp_password: '',
+                imap_username: '',
+                imap_password: '',
+            });
+        },
+
+        removeBulkRow(index) {
+            if (this.bulkRows.length <= 1) {
+                this.resetBulkRows();
+                return;
+            }
+
+            this.bulkRows.splice(index, 1);
+        },
+
+        applyProviderDefaultsToRow(row) {
+            const d = PROVIDER_DEFAULTS[row.provider];
+            if (d) {
+                row.smtp_host = d.smtp_host;
+                row.smtp_port = d.smtp_port;
+                row.smtp_encryption = d.smtp_encryption;
+                row.imap_host = d.imap_host;
+                row.imap_port = d.imap_port;
+                row.imap_encryption = d.imap_encryption;
+            }
+            this.syncBulkUsernames(row);
+        },
+
+        syncBulkUsernames(row) {
+            if (row.email_address && !row.smtp_username) {
+                row.smtp_username = row.email_address;
+            }
+            if (row.email_address && !row.imap_username) {
+                row.imap_username = row.email_address;
             }
         },
 
@@ -375,6 +591,61 @@ function sendersPage() {
                 showToast(`Sender ${action}d`);
                 await this.load();
             } catch(e) { showToast('Error', 'error'); }
+        },
+
+        async saveBulkSenders() {
+            this.bulkSaving = true;
+            this.bulkResult = null;
+
+            try {
+                const rows = this.bulkRows
+                    .map((row) => ({
+                        email_address: (row.email_address || '').trim(),
+                        provider: (row.provider || '').trim() || null,
+                        smtp_host: (row.smtp_host || '').trim(),
+                        smtp_port: row.smtp_port === '' || row.smtp_port === null ? null : Number(row.smtp_port),
+                        smtp_username: (row.smtp_username || '').trim(),
+                        smtp_password: row.smtp_password || '',
+                        smtp_encryption: (row.smtp_encryption || 'tls').trim(),
+                        imap_host: (row.imap_host || '').trim() || null,
+                        imap_port: row.imap_port === '' || row.imap_port === null ? null : Number(row.imap_port),
+                        imap_username: (row.imap_username || '').trim() || null,
+                        imap_password: row.imap_password || null,
+                        imap_encryption: (row.imap_encryption || '').trim() || null,
+                        warmup_target_daily: row.warmup_target_daily === '' || row.warmup_target_daily === null ? null : Number(row.warmup_target_daily),
+                    }))
+                    .filter((row) => [
+                        row.email_address,
+                        row.smtp_host,
+                        row.smtp_username,
+                        row.smtp_password,
+                        row.imap_host || '',
+                        row.imap_username || '',
+                        row.imap_password || '',
+                    ].some((v) => String(v).trim() !== ''));
+
+                if (!rows.length) {
+                    showToast('Add at least one non-empty row before bulk create.', 'error');
+                    return;
+                }
+
+                const res = await apiCall('/api/warmup/sender-mailboxes/bulk', 'POST', { rows });
+                this.bulkResult = res;
+
+                if ((res.imported || 0) > 0) {
+                    await this.load();
+                }
+
+                if ((res.skipped || 0) > 0) {
+                    showToast(`Bulk create done: ${res.imported || 0} imported, ${res.skipped || 0} skipped.`, 'info');
+                } else {
+                    showToast(`Bulk create done: ${res.imported || 0} sender(s) imported.`, 'success');
+                }
+            } catch (e) {
+                showToast('Bulk create error: ' + e.message, 'error');
+            } finally {
+                this.bulkSaving = false;
+            }
         },
 
         async uploadCsv() {
