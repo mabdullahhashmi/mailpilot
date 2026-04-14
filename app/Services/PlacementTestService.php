@@ -306,10 +306,13 @@ class PlacementTestService
             throw new \RuntimeException("SMTP password decryption failed for {$sender->email_address}");
         }
 
+        $encryption = strtolower((string) ($sender->smtp_encryption ?? ''));
+        $useTls = in_array($encryption, ['ssl', 'tls'], true);
+
         $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
             $sender->smtp_host,
             $sender->smtp_port,
-            $sender->smtp_encryption === 'tls'
+            $useTls
         );
         $transport->getStream()->setTimeout(self::SMTP_TIMEOUT_SECONDS);
         $transport->setUsername($sender->smtp_username);
