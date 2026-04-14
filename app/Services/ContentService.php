@@ -208,6 +208,14 @@ class ContentService
         return $body;
     }
 
+    /**
+     * Public sanitizer for any rendered text that may still contain unresolved template tokens.
+     */
+    public function sanitizeRenderedText(string $text, array $fallbacks = []): string
+    {
+        return $this->sanitizeResidualTemplateTokens($text, $fallbacks);
+    }
+
     private function applyVariations(string $text, ContentTemplate $template): string
     {
         $variations = $template->variations ?? [];

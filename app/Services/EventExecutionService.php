@@ -102,7 +102,10 @@ class EventExecutionService
         $campaign = $thread->warmupCampaign;
         $template = $this->content->selectInitialTemplate($campaign->current_stage);
         $body = $this->content->generateBody($template, $sender, $seed);
-        $subject = $thread->subject_line ?: $this->content->generateSubject($template);
+        $subject = $this->resolveThreadSubject(
+            $thread,
+            $this->content->generateSubject($template)
+        );
 
         // Send email via SMTP
         try {
@@ -179,12 +182,14 @@ class EventExecutionService
         $campaign = $thread->warmupCampaign;
         $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread, $lastMessage?->body);
         $body = $this->content->generateReplyBody($template, $seed, $sender, $lastMessage);
+        $baseSubject = $this->resolveThreadSubject($thread);
+        $replySubject = 'Re: ' . $baseSubject;
 
         // Send reply via seed SMTP
         try {
             $messageId = $this->sendEmail(
                 $seed, $sender,
-                'Re: ' . $thread->subject_line,
+                $replySubject,
                 $body,
                 $lastMessage?->provider_message_id
             );
@@ -199,7 +204,7 @@ class EventExecutionService
             'actor_mailbox_id' => $seed->id,
             'recipient_mailbox_id' => $sender->id,
             'direction' => 'seed_to_sender',
-            'subject' => 'Re: ' . $thread->subject_line,
+            'subject' => $replySubject,
             'body' => $body,
             'provider_message_id' => $messageId,
             'in_reply_to_message_id' => $lastMessage?->provider_message_id,
@@ -253,11 +258,13 @@ class EventExecutionService
         $campaign = $thread->warmupCampaign;
         $template = $this->content->selectReplyTemplate($campaign->current_stage, $thread, $lastMessage?->body);
         $body = $this->content->generateReplyBody($template, $sender, $seed, $lastMessage);
+        $baseSubject = $this->resolveThreadSubject($thread);
+        $replySubject = 'Re: ' . $baseSubject;
 
         try {
             $messageId = $this->sendEmail(
                 $sender, $seed,
-                'Re: ' . $thread->subject_line,
+                $replySubject,
                 $body,
                 $lastMessage?->provider_message_id
             );
@@ -272,7 +279,7 @@ class EventExecutionService
             'actor_mailbox_id' => $sender->id,
             'recipient_mailbox_id' => $seed->id,
             'direction' => 'sender_to_seed',
-            'subject' => 'Re: ' . $thread->subject_line,
+            'subject' => $replySubject,
             'body' => $body,
             'provider_message_id' => $messageId,
             'in_reply_to_message_id' => $lastMessage?->provider_message_id,
@@ -647,6 +654,27 @@ class EventExecutionService
             'message' => strtoupper($eventType) . " deferred for thread #{$thread->id}: {$reason}",
             'schedule_next' => false,
         ];
+    }
+
+    private function resolveThreadSubject(Thread $thread, ?string $fallback = null): string
+    {
+        $candidate = trim((string) ($thread->subject_line ?? ''));
+
+        if ($candidate === '' && $fallback !== null) {
+            $candidate = trim($fallback);
+        }
+
+        $normalized = $this->content->sanitizeRenderedText($candidate);
+        if ($normalized === '') {
+            $normalized = 'Quick follow-up';
+        }
+
+        if ((string) $thread->subject_line !== $normalized) {
+            $thread->update(['subject_line' => $normalized]);
+            $thread->subject_line = $normalized;
+        }
+
+        return $normalized;
     }
 
     /**
