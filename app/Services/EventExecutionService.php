@@ -58,6 +58,33 @@ class EventExecutionService
             return;
         }
 
+        // If an execution path explicitly marked this event failed/cancelled,
+        // keep that terminal status and avoid reporting it as completed.
+        if (in_array($event->status, ['failed', 'final_failed', 'cancelled'], true)) {
+            $details = $event->failure_reason ?: ($result['message'] ?? null);
+
+            WarmupEventLog::create([
+                'warmup_event_id' => $event->id,
+                'thread_id' => $event->thread_id,
+                'warmup_campaign_id' => $event->warmup_campaign_id,
+                'event_type' => $event->event_type,
+                'outcome' => $event->status === 'cancelled' ? 'skipped' : 'failed',
+                'details' => $details,
+                'execution_time_ms' => $executionTime,
+            ]);
+
+            $slot = SendSlot::where('warmup_event_id', $event->id)->first();
+            if ($slot) {
+                if ($event->status === 'cancelled') {
+                    $this->slotScheduler->markSlotSkipped($slot, $details ?? 'Event cancelled');
+                } else {
+                    $this->slotScheduler->markSlotFailed($slot);
+                }
+            }
+
+            return;
+        }
+
         // Mark event completed
         $event->update([
             'status' => 'completed',
@@ -301,27 +328,48 @@ class EventExecutionService
         $openActor = $event->payload['open_actor'] ?? 'seed';
         $isSenderOpen = $openActor === 'sender';
 
+        $payload = $event->payload ?? [];
+        $attempt = (int) (($payload['open_attempt'] ?? 0) + 1);
+        $maxAttempts = 3;
+        $payload['open_attempt'] = $attempt;
+        $payload['open_actor'] = $openActor;
+
         $actorMailbox = $isSenderOpen ? $thread->senderMailbox : $thread->seedMailbox;
         $fromEmail = $isSenderOpen ? $thread->seedMailbox->email_address : $thread->senderMailbox->email_address;
         $actorLabel = $isSenderOpen ? 'Sender' : 'Seed';
 
         $imap = $this->connectImap($actorMailbox);
         if (!$imap) {
-            return ['message' => "{$actorLabel} open recorded (IMAP unavailable)", 'schedule_next' => false];
+            if ($attempt <= $maxAttempts) {
+                $event->update([
+                    'status' => 'pending',
+                    'scheduled_at' => now()->addMinutes(2),
+                    'payload' => $payload,
+                    'lock_token' => null,
+                    'lock_expires_at' => null,
+                ]);
+
+                return ['message' => "{$actorLabel} open deferred (IMAP unavailable, attempt {$attempt}/{$maxAttempts})", 'schedule_next' => false];
+            }
+
+            $reason = "{$actorLabel} open failed: IMAP unavailable after {$maxAttempts} checks";
+            $event->update([
+                'status' => 'final_failed',
+                'executed_at' => now(),
+                'failure_reason' => $reason,
+                'payload' => $payload,
+                'lock_token' => null,
+                'lock_expires_at' => null,
+            ]);
+
+            return ['message' => $reason, 'schedule_next' => false];
         }
 
         try {
             $messageUid = $this->findMessageForOpen($imap, $actorMailbox, $thread->subject_line, $fromEmail);
 
             if (!$messageUid) {
-                $payload = $event->payload ?? [];
-                $attempt = (int) (($payload['open_attempt'] ?? 0) + 1);
-                $maxAttempts = 3;
-
                 if ($attempt <= $maxAttempts) {
-                    $payload['open_attempt'] = $attempt;
-                    $payload['open_actor'] = $openActor;
-
                     $event->update([
                         'status' => 'pending',
                         'scheduled_at' => now()->addMinutes(2),
@@ -333,7 +381,17 @@ class EventExecutionService
                     return ['message' => "{$actorLabel} open deferred (message not found yet, attempt {$attempt}/{$maxAttempts})", 'schedule_next' => false];
                 }
 
-                return ['message' => "{$actorLabel} open recorded (message not found after {$maxAttempts} checks)", 'schedule_next' => false];
+                $reason = "{$actorLabel} open failed: message not found after {$maxAttempts} checks";
+                $event->update([
+                    'status' => 'final_failed',
+                    'executed_at' => now(),
+                    'failure_reason' => $reason,
+                    'payload' => $payload,
+                    'lock_token' => null,
+                    'lock_expires_at' => null,
+                ]);
+
+                return ['message' => $reason, 'schedule_next' => false];
             }
 
             // Mark message as SEEN (this is what "open" means at IMAP level)
