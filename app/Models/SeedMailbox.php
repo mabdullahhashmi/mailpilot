@@ -16,6 +16,8 @@ class SeedMailbox extends Model
         'daily_total_interaction_cap', 'per_domain_interaction_cap', 'per_sender_interaction_cap',
         'concurrent_thread_cap', 'cooldown_minutes_between_threads',
         'trust_tier', 'health_score', 'last_used_at', 'is_paused',
+        'last_smtp_test_at', 'last_imap_test_at',
+        'last_smtp_test_result', 'last_imap_test_result',
         'seed_health_score', 'reply_quality_score', 'total_replies_sent',
         'total_opens', 'failed_interactions',
         'last_health_check_at', 'auto_disabled_at', 'auto_disable_reason',
@@ -24,6 +26,8 @@ class SeedMailbox extends Model
     protected $casts = [
         'is_paused' => 'boolean',
         'last_used_at' => 'datetime',
+        'last_smtp_test_at' => 'datetime',
+        'last_imap_test_at' => 'datetime',
         'last_health_check_at' => 'datetime',
         'auto_disabled_at' => 'datetime',
     ];

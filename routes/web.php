@@ -45,6 +45,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::apiResource('sender-mailboxes', \App\Http\Controllers\Api\SenderMailboxController::class);
     Route::post('sender-mailboxes/{id}/test-smtp', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testSmtp']);
     Route::post('sender-mailboxes/{id}/test-imap', [\App\Http\Controllers\Api\SenderMailboxController::class, 'testImap']);
+    Route::get('sender-mailboxes/{id}/inbox', [\App\Http\Controllers\Api\SenderMailboxController::class, 'inbox']);
     Route::post('sender-mailboxes/{id}/pause', [\App\Http\Controllers\Api\SenderMailboxController::class, 'pause']);
     Route::post('sender-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SenderMailboxController::class, 'resume']);
 
@@ -52,6 +53,9 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
     Route::get('seed-mailboxes/{id}/history', [\App\Http\Controllers\Api\SeedMailboxController::class, 'history']);
     Route::post('seed-mailboxes/bulk', [\App\Http\Controllers\Api\SeedMailboxController::class, 'bulkStore']);
     Route::apiResource('seed-mailboxes', \App\Http\Controllers\Api\SeedMailboxController::class);
+    Route::post('seed-mailboxes/{id}/test-smtp', [\App\Http\Controllers\Api\SeedMailboxController::class, 'testSmtp']);
+    Route::post('seed-mailboxes/{id}/test-imap', [\App\Http\Controllers\Api\SeedMailboxController::class, 'testImap']);
+    Route::get('seed-mailboxes/{id}/inbox', [\App\Http\Controllers\Api\SeedMailboxController::class, 'inbox']);
     Route::post('seed-mailboxes/{id}/pause', [\App\Http\Controllers\Api\SeedMailboxController::class, 'pause']);
     Route::post('seed-mailboxes/{id}/resume', [\App\Http\Controllers\Api\SeedMailboxController::class, 'resume']);
 

@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Crypt;
 
 class SeedService
 {
+    private const SMTP_TEST_TIMEOUT_SECONDS = 12.0;
+
+    public function __construct(private InboxFetchService $inboxFetchService) {}
+
     public function create(array $data): SeedMailbox
     {
         // Map frontend field names to model columns
@@ -78,6 +82,171 @@ class SeedService
         $seed->pauseRules()->where('status', 'active')->update([
             'resumed_at' => now(),
             'status' => 'resumed',
+        ]);
+    }
+
+    public function testSmtp(SeedMailbox $seed, ?string $testEmail = null): array
+    {
+        try {
+            $smtpHost = trim((string) ($seed->smtp_host ?? ''));
+            $smtpPort = (int) ($seed->smtp_port ?? 0);
+            $smtpUsername = trim((string) ($seed->smtp_username ?? ''));
+            $smtpPasswordEncrypted = (string) ($seed->smtp_password ?? '');
+            $smtpEncryption = strtolower(trim((string) ($seed->smtp_encryption ?? 'tls')));
+
+            if ($smtpHost === '' || str_contains($smtpHost, '@')) {
+                $this->recordSmtpTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'Invalid SMTP host. Use server host like smtp.gmail.com or smtp.office365.com (not an email address).',
+                ];
+            }
+
+            if ($smtpPort <= 0 || $smtpUsername === '' || $smtpPasswordEncrypted === '') {
+                $this->recordSmtpTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'SMTP port, username, and password are required to verify SMTP.',
+                ];
+            }
+
+            if (!in_array($smtpEncryption, ['tls', 'ssl', 'none'], true)) {
+                $this->recordSmtpTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'SMTP encryption must be one of: tls, ssl, none.',
+                ];
+            }
+
+            $password = Crypt::decryptString($smtpPasswordEncrypted);
+
+            $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
+                $smtpHost,
+                $smtpPort,
+                $smtpEncryption === 'ssl'
+            );
+            $transport->getStream()->setTimeout(self::SMTP_TEST_TIMEOUT_SECONDS);
+            if ($smtpEncryption === 'none' && method_exists($transport, 'setAutoTls')) {
+                $transport->setAutoTls(false);
+            }
+            $transport->setUsername($smtpUsername);
+            $transport->setPassword($password);
+            $transport->start();
+
+            $testEmail = trim((string) ($testEmail ?? ''));
+            if ($testEmail !== '') {
+                $mailer = new \Symfony\Component\Mailer\Mailer($transport);
+                $email = (new \Symfony\Component\Mime\Email())
+                    ->from($seed->email_address)
+                    ->to($testEmail)
+                    ->subject('MailPilot Seed SMTP Test - ' . now()->format('Y-m-d H:i:s'))
+                    ->text("This is a MailPilot seed SMTP test message.\n\nSeed: {$seed->email_address}\nSMTP Host: {$smtpHost}\nTime: " . now()->toDateTimeString())
+                    ->html('<p>This is a <strong>MailPilot seed SMTP test message</strong>.</p><p>Seed: ' . e($seed->email_address) . '<br>SMTP Host: ' . e($smtpHost) . '<br>Time: ' . e(now()->toDateTimeString()) . '</p>');
+
+                $mailer->send($email);
+            }
+
+            $transport->stop();
+            $this->recordSmtpTestResult($seed, true);
+
+            return [
+                'success' => true,
+                'test_email_sent' => $testEmail !== '',
+                'test_email' => $testEmail !== '' ? $testEmail : null,
+                'message' => $testEmail !== ''
+                    ? "SMTP connected and test email sent to {$testEmail}"
+                    : 'SMTP connection successful',
+            ];
+        } catch (\Throwable $e) {
+            $this->recordSmtpTestResult($seed, false);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function testImap(SeedMailbox $seed): array
+    {
+        try {
+            if (!function_exists('imap_open')) {
+                $this->recordImapTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'PHP IMAP extension is not enabled on this server.',
+                ];
+            }
+
+            $imapHost = trim((string) ($seed->imap_host ?? ''));
+            $imapPort = (int) ($seed->imap_port ?? 0);
+            $imapUsername = trim((string) ($seed->imap_username ?? ''));
+            $imapPasswordEncrypted = (string) ($seed->imap_password ?? '');
+            $imapEncryption = strtolower(trim((string) ($seed->imap_encryption ?? 'ssl')));
+
+            if ($imapHost === '' || str_contains($imapHost, '@')) {
+                $this->recordImapTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'Invalid IMAP host. Use server host like imap.gmail.com (not an email address).',
+                ];
+            }
+
+            if ($imapPort <= 0 || $imapUsername === '' || $imapPasswordEncrypted === '') {
+                $this->recordImapTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'IMAP host, port, username, and password are required to verify IMAP.',
+                ];
+            }
+
+            if (!in_array($imapEncryption, ['tls', 'ssl', 'none'], true)) {
+                $this->recordImapTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'IMAP encryption must be one of: tls, ssl, none.',
+                ];
+            }
+
+            $password = Crypt::decryptString($imapPasswordEncrypted);
+
+            $encryptionFlag = match ($imapEncryption) {
+                'ssl' => '/ssl',
+                'tls' => '/tls',
+                default => '',
+            };
+
+            $connString = '{' . $imapHost . ':' . $imapPort . '/imap' . $encryptionFlag . '}INBOX';
+            $connection = @imap_open($connString, $imapUsername, $password, 0, 1);
+
+            if (!$connection) {
+                throw new \RuntimeException(imap_last_error() ?: 'IMAP connection failed');
+            }
+
+            imap_close($connection);
+            $this->recordImapTestResult($seed, true);
+
+            return ['success' => true, 'message' => 'IMAP connection successful'];
+        } catch (\Throwable $e) {
+            $this->recordImapTestResult($seed, false);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function fetchInbox(SeedMailbox $seed, int $limit = 30, string $folder = 'INBOX'): array
+    {
+        return $this->inboxFetchService->fetchInbox($seed, $limit, $folder);
+    }
+
+    private function recordSmtpTestResult(SeedMailbox $seed, bool $success): void
+    {
+        $seed->update([
+            'last_smtp_test_at' => now(),
+            'last_smtp_test_result' => $success ? 'pass' : 'fail',
+        ]);
+    }
+
+    private function recordImapTestResult(SeedMailbox $seed, bool $success): void
+    {
+        $seed->update([
+            'last_imap_test_at' => now(),
+            'last_imap_test_result' => $success ? 'pass' : 'fail',
         ]);
     }
 

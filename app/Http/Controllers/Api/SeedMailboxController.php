@@ -314,6 +314,43 @@ class SeedMailboxController extends Controller
         return response()->json($updated);
     }
 
+    public function testSmtp(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'test_email' => 'nullable|email',
+        ]);
+
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $result = $this->service->testSmtp($seed, $validated['test_email'] ?? null);
+
+        return response()->json($result);
+    }
+
+    public function testImap(int $id): JsonResponse
+    {
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $result = $this->service->testImap($seed);
+
+        return response()->json($result);
+    }
+
+    public function inbox(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'folder' => 'nullable|string|max:120',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $seed = \App\Models\SeedMailbox::findOrFail($id);
+        $result = $this->service->fetchInbox(
+            $seed,
+            (int) ($validated['limit'] ?? 30),
+            (string) ($validated['folder'] ?? 'INBOX')
+        );
+
+        return response()->json($result);
+    }
+
     public function destroy(int $id): JsonResponse
     {
         $seed = \App\Models\SeedMailbox::findOrFail($id);

@@ -28,6 +28,7 @@
                     <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Email</th>
                     <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Provider</th>
                     <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                    <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Checks</th>
                     <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Daily Cap</th>
                     <th class="text-left px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Interactions</th>
                     <th class="text-right px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Actions</th>
@@ -48,12 +49,33 @@
                                 :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'"
                                 x-text="s.status"></span>
                         </td>
+                        <td class="px-5 py-4">
+                            <div class="flex flex-wrap gap-1.5">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                    :class="(s.last_smtp_test_result || 'untested') === 'pass' ? 'bg-emerald-500/15 text-emerald-300' : ((s.last_smtp_test_result || 'untested') === 'fail' ? 'bg-red-500/15 text-red-300' : 'bg-zinc-500/15 text-zinc-400')"
+                                    :title="s.last_smtp_test_at ? ('Last SMTP test: ' + formatDateTime(s.last_smtp_test_at)) : 'SMTP not tested yet'"
+                                    x-text="'SMTP ' + (s.last_smtp_test_result || 'untested').toUpperCase()"></span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                    :class="(s.last_imap_test_result || 'untested') === 'pass' ? 'bg-emerald-500/15 text-emerald-300' : ((s.last_imap_test_result || 'untested') === 'fail' ? 'bg-red-500/15 text-red-300' : 'bg-zinc-500/15 text-zinc-400')"
+                                    :title="s.last_imap_test_at ? ('Last IMAP test: ' + formatDateTime(s.last_imap_test_at)) : 'IMAP not tested yet'"
+                                    x-text="'IMAP ' + (s.last_imap_test_result || 'untested').toUpperCase()"></span>
+                            </div>
+                        </td>
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.daily_total_interaction_cap ?? s.daily_interaction_cap ?? 20"></td>
                         <td class="px-5 py-4 text-sm text-zinc-400" x-text="s.total_interactions ?? 0"></td>
                         <td class="px-5 py-4 text-right">
                             <div class="flex items-center justify-end gap-1">
                                 <button @click="viewSeedHistory(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="View History">
                                     <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                                <button @click="openInbox(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-cyan-400" title="Open Inbox">
+                                    <i data-lucide="mail-open" class="w-4 h-4"></i>
+                                </button>
+                                <button @click="testSmtp(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-sky-400 disabled:opacity-40 disabled:cursor-not-allowed" :disabled="isSeedCheckBusy(s.id, 'smtp')" title="Test SMTP">
+                                    <i data-lucide="plug" class="w-4 h-4"></i>
+                                </button>
+                                <button @click="testImap(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed" :disabled="isSeedCheckBusy(s.id, 'imap')" title="Test IMAP">
+                                    <i data-lucide="inbox" class="w-4 h-4"></i>
                                 </button>
                                 <button @click="togglePause(s)" class="btn-ghost p-2 rounded-lg text-zinc-500" :class="s.status === 'active' ? 'hover:text-amber-400' : 'hover:text-emerald-400'">
                                     <i :data-lucide="s.status === 'active' ? 'pause' : 'play'" class="w-4 h-4"></i>
@@ -180,6 +202,85 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Inbox Modal -->
+    <div x-show="showInbox" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="closeInbox()">
+        <div class="w-full max-w-6xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-5">
+                <div>
+                    <h3 class="text-white font-semibold text-lg">Seed Inbox</h3>
+                    <p class="text-zinc-500 text-xs mt-0.5" x-text="inboxMailbox?.email_address || 'Select a seed mailbox'"></p>
+                </div>
+                <button @click="closeInbox()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 mb-4">
+                <label class="text-xs text-zinc-400">Folder</label>
+                <select x-model="inboxFolder" class="input-dark px-3 py-2 rounded-lg text-sm text-white min-w-[180px]">
+                    <option value="INBOX">INBOX</option>
+                    <option value="[Gmail]/All Mail">[Gmail]/All Mail</option>
+                    <option value="[Gmail]/Spam">[Gmail]/Spam</option>
+                    <option value="Junk">Junk</option>
+                    <option value="Sent">Sent</option>
+                </select>
+
+                <label class="text-xs text-zinc-400 ml-2">Limit</label>
+                <select x-model.number="inboxLimit" class="input-dark px-3 py-2 rounded-lg text-sm text-white">
+                    <option :value="20">20</option>
+                    <option :value="30">30</option>
+                    <option :value="50">50</option>
+                    <option :value="100">100</option>
+                </select>
+
+                <button @click="fetchInbox()" class="px-3 py-2 rounded-lg text-sm text-cyan-200 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 disabled:opacity-60 disabled:cursor-not-allowed" :disabled="inboxLoading || !inboxMailbox">
+                    <span x-show="!inboxLoading">Refresh</span>
+                    <span x-show="inboxLoading">Loading...</span>
+                </button>
+            </div>
+
+            <div x-show="inboxError" class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm" x-text="inboxError"></div>
+
+            <div x-show="inboxLoading" class="text-center py-10">
+                <i data-lucide="loader" class="w-5 h-5 text-zinc-500 animate-spin mx-auto"></i>
+                <p class="text-zinc-500 text-sm mt-2">Fetching inbox...</p>
+            </div>
+
+            <div x-show="!inboxLoading && inboxData" class="space-y-3">
+                <p class="text-xs text-zinc-500" x-text="'Showing ' + (inboxData.returned_messages || 0) + ' of ' + (inboxData.total_messages || 0) + ' messages in ' + (inboxData.folder || inboxFolder)"></p>
+
+                <div class="overflow-x-auto border border-white/10 rounded-xl">
+                    <table class="w-full min-w-[900px]">
+                        <thead>
+                            <tr class="border-b border-white/10 bg-white/[0.02]">
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Date</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">From</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Subject</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">State</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Size</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="m in (inboxData?.messages || [])" :key="String(m.uid) + '-' + String(m.message_no)">
+                                <tr class="border-b border-white/[0.05] hover:bg-white/[0.02]">
+                                    <td class="px-4 py-2 text-zinc-300 text-xs" x-text="formatInboxDate(m.date_iso, m.date)"></td>
+                                    <td class="px-4 py-2 text-zinc-300 text-xs max-w-[260px] truncate" :title="m.from || ''" x-text="m.from || '—'"></td>
+                                    <td class="px-4 py-2 text-zinc-200 text-xs max-w-[360px] truncate" :title="m.subject || ''" x-text="m.subject || '—'"></td>
+                                    <td class="px-4 py-2 text-xs">
+                                        <span class="px-2 py-0.5 rounded-full" :class="m.seen ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'" x-text="m.seen ? 'Seen' : 'Unread'"></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-zinc-400 text-xs" x-text="formatBytes(m.size)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div x-show="(inboxData?.messages || []).length === 0" class="text-center py-8 text-zinc-500 text-sm">
+                    No messages found in this folder.
+                </div>
+            </div>
         </div>
     </div>
 
@@ -420,6 +521,13 @@ function seedsPage() {
         showImport: false,
         showQuickBulk: false,
         showDetail: false,
+        showInbox: false,
+        inboxLoading: false,
+        inboxError: '',
+        inboxMailbox: null,
+        inboxData: null,
+        inboxFolder: 'INBOX',
+        inboxLimit: 30,
         detailLoading: false,
         seedDetail: null,
         editMode: false,
@@ -433,6 +541,7 @@ function seedsPage() {
         bulkCap: 20,
         bulkLoading: false,
         bulkResult: null,
+        testingSeedChecks: {},
         form: {},
 
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
@@ -489,9 +598,123 @@ function seedsPage() {
             this.seedDetail = null;
             this.detailLoading = false;
         },
+        closeInbox() {
+            this.showInbox = false;
+            this.inboxLoading = false;
+            this.inboxError = '';
+            this.inboxMailbox = null;
+            this.inboxData = null;
+        },
+        async openInbox(seed) {
+            this.inboxMailbox = seed;
+            this.inboxError = '';
+            this.inboxData = null;
+            this.showInbox = true;
+            await this.fetchInbox();
+        },
+        async fetchInbox() {
+            if (!this.inboxMailbox) return;
+
+            this.inboxLoading = true;
+            this.inboxError = '';
+
+            const folder = encodeURIComponent(this.inboxFolder || 'INBOX');
+            const limit = Math.max(1, Math.min(100, Number(this.inboxLimit || 30)));
+
+            try {
+                const res = await apiCall(`/api/warmup/seed-mailboxes/${this.inboxMailbox.id}/inbox?folder=${folder}&limit=${limit}`);
+                if (!res.success) {
+                    throw new Error(res.message || 'Failed to fetch inbox');
+                }
+                this.inboxData = res;
+            } catch (e) {
+                this.inboxError = e.message || 'Failed to fetch inbox';
+            } finally {
+                this.inboxLoading = false;
+                this.$nextTick(() => lucide.createIcons());
+            }
+        },
         formatDateTime(iso) {
             if (!iso) return '—';
             return new Date(iso).toLocaleString();
+        },
+        formatInboxDate(dateIso, fallbackDate) {
+            if (dateIso) {
+                return new Date(dateIso).toLocaleString();
+            }
+            return fallbackDate || '—';
+        },
+        formatBytes(size) {
+            const value = Number(size || 0);
+            if (!Number.isFinite(value) || value <= 0) return '0 B';
+
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let unit = 0;
+            let bytes = value;
+
+            while (bytes >= 1024 && unit < units.length - 1) {
+                bytes /= 1024;
+                unit++;
+            }
+
+            const precision = unit === 0 ? 0 : 1;
+            return `${bytes.toFixed(precision)} ${units[unit]}`;
+        },
+        isSeedCheckBusy(seedId, channel) {
+            return !!(this.testingSeedChecks[seedId] && this.testingSeedChecks[seedId][channel]);
+        },
+        setSeedCheckBusy(seedId, channel, value) {
+            const previous = this.testingSeedChecks[seedId] || { smtp: false, imap: false };
+            this.testingSeedChecks = {
+                ...this.testingSeedChecks,
+                [seedId]: {
+                    ...previous,
+                    [channel]: value,
+                },
+            };
+        },
+        async testSmtp(seed) {
+            if (this.isSeedCheckBusy(seed.id, 'smtp')) return;
+
+            const target = prompt(
+                'Enter recipient email for a seed SMTP test message.\nLeave empty to only test SMTP connection.',
+                seed?.email_address || ''
+            );
+            if (target === null) return;
+
+            const email = (target || '').trim();
+            const payload = email ? { test_email: email } : null;
+
+            this.setSeedCheckBusy(seed.id, 'smtp', true);
+            showToast(email ? 'Testing seed SMTP and sending test email...' : 'Testing seed SMTP connection...', 'info');
+
+            try {
+                const res = await apiCall(`/api/warmup/seed-mailboxes/${seed.id}/test-smtp`, 'POST', payload);
+                const msg = res.message || (res.success ? 'Seed SMTP connected!' : 'Seed SMTP test failed');
+                showToast(msg, res.success ? 'success' : 'error');
+            } catch (e) {
+                showToast('Seed SMTP test failed: ' + e.message, 'error');
+            } finally {
+                this.setSeedCheckBusy(seed.id, 'smtp', false);
+                await this.load();
+            }
+        },
+        async testImap(seed) {
+            if (this.isSeedCheckBusy(seed.id, 'imap')) return;
+
+            this.setSeedCheckBusy(seed.id, 'imap', true);
+            showToast('Testing seed IMAP connection...', 'info');
+
+            try {
+                const res = await apiCall(`/api/warmup/seed-mailboxes/${seed.id}/test-imap`, 'POST');
+                const msg = res.message || (res.success ? 'Seed IMAP connected!' : 'Seed IMAP test failed');
+                showToast(msg, res.success ? 'success' : 'error');
+            } catch (e) {
+                showToast('Seed IMAP test failed: ' + e.message, 'error');
+            } finally {
+                this.setSeedCheckBusy(seed.id, 'imap', false);
+                await this.load();
+            }
         },
         async saveSeed() {
             this.saving = true;

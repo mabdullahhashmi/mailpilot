@@ -205,6 +205,23 @@ class SenderMailboxController extends Controller
         return response()->json($result);
     }
 
+    public function inbox(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'folder' => 'nullable|string|max:120',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $result = $this->service->fetchInbox(
+            $mailbox,
+            (int) ($validated['limit'] ?? 30),
+            (string) ($validated['folder'] ?? 'INBOX')
+        );
+
+        return response()->json($result);
+    }
+
     public function testSmtpCredentials(Request $request): JsonResponse
     {
         $validated = $request->validate([

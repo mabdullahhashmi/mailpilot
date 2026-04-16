@@ -10,6 +10,8 @@ class MailboxService
 {
     private const SMTP_TEST_TIMEOUT_SECONDS = 12.0;
 
+    public function __construct(private InboxFetchService $inboxFetchService) {}
+
     public function create(array $data): SenderMailbox
     {
         $domain = $this->resolveOrCreateDomain($data['email_address']);
@@ -263,6 +265,11 @@ class MailboxService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    public function fetchInbox(SenderMailbox $mailbox, int $limit = 30, string $folder = 'INBOX'): array
+    {
+        return $this->inboxFetchService->fetchInbox($mailbox, $limit, $folder);
     }
 
     public function getDecryptedSmtpPassword(SenderMailbox $mailbox): string

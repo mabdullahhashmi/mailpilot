@@ -59,6 +59,9 @@
                                 <button @click="testSmtp(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-blue-400" title="Test SMTP">
                                     <i data-lucide="plug" class="w-4 h-4"></i>
                                 </button>
+                                <button @click="openInbox(s)" class="btn-ghost p-2 rounded-lg text-zinc-500 hover:text-cyan-400" title="Open Inbox">
+                                    <i data-lucide="mail-open" class="w-4 h-4"></i>
+                                </button>
                                 <button @click="togglePause(s)" class="btn-ghost p-2 rounded-lg text-zinc-500" :class="s.status === 'active' ? 'hover:text-amber-400' : 'hover:text-emerald-400'" :title="s.status === 'active' ? 'Pause' : 'Resume'">
                                     <i :data-lucide="s.status === 'active' ? 'pause' : 'play'" class="w-4 h-4"></i>
                                 </button>
@@ -80,6 +83,85 @@
             </div>
             <p class="text-zinc-400 font-medium">No sender mailboxes yet</p>
             <p class="text-zinc-600 text-sm mt-1">Add your first sending email account to start warming up</p>
+        </div>
+    </div>
+
+    <!-- Inbox Modal -->
+    <div x-show="showInbox" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="closeInbox()">
+        <div class="w-full max-w-6xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
+            <div class="flex items-center justify-between mb-5">
+                <div>
+                    <h3 class="text-white font-semibold text-lg">Sender Inbox</h3>
+                    <p class="text-zinc-500 text-xs mt-0.5" x-text="inboxMailbox?.email_address || 'Select a sender mailbox'"></p>
+                </div>
+                <button @click="closeInbox()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 mb-4">
+                <label class="text-xs text-zinc-400">Folder</label>
+                <select x-model="inboxFolder" class="input-dark px-3 py-2 rounded-lg text-sm text-white min-w-[180px]">
+                    <option value="INBOX">INBOX</option>
+                    <option value="[Gmail]/All Mail">[Gmail]/All Mail</option>
+                    <option value="[Gmail]/Spam">[Gmail]/Spam</option>
+                    <option value="Junk">Junk</option>
+                    <option value="Sent">Sent</option>
+                </select>
+
+                <label class="text-xs text-zinc-400 ml-2">Limit</label>
+                <select x-model.number="inboxLimit" class="input-dark px-3 py-2 rounded-lg text-sm text-white">
+                    <option :value="20">20</option>
+                    <option :value="30">30</option>
+                    <option :value="50">50</option>
+                    <option :value="100">100</option>
+                </select>
+
+                <button @click="fetchInbox()" class="px-3 py-2 rounded-lg text-sm text-cyan-200 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 disabled:opacity-60 disabled:cursor-not-allowed" :disabled="inboxLoading || !inboxMailbox">
+                    <span x-show="!inboxLoading">Refresh</span>
+                    <span x-show="inboxLoading">Loading...</span>
+                </button>
+            </div>
+
+            <div x-show="inboxError" class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm" x-text="inboxError"></div>
+
+            <div x-show="inboxLoading" class="text-center py-10">
+                <i data-lucide="loader" class="w-5 h-5 text-zinc-500 animate-spin mx-auto"></i>
+                <p class="text-zinc-500 text-sm mt-2">Fetching inbox...</p>
+            </div>
+
+            <div x-show="!inboxLoading && inboxData" class="space-y-3">
+                <p class="text-xs text-zinc-500" x-text="'Showing ' + (inboxData.returned_messages || 0) + ' of ' + (inboxData.total_messages || 0) + ' messages in ' + (inboxData.folder || inboxFolder)"></p>
+
+                <div class="overflow-x-auto border border-white/10 rounded-xl">
+                    <table class="w-full min-w-[900px]">
+                        <thead>
+                            <tr class="border-b border-white/10 bg-white/[0.02]">
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Date</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">From</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Subject</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">State</th>
+                                <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Size</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="m in (inboxData?.messages || [])" :key="String(m.uid) + '-' + String(m.message_no)">
+                                <tr class="border-b border-white/[0.05] hover:bg-white/[0.02]">
+                                    <td class="px-4 py-2 text-zinc-300 text-xs" x-text="formatInboxDate(m.date_iso, m.date)"></td>
+                                    <td class="px-4 py-2 text-zinc-300 text-xs max-w-[260px] truncate" :title="m.from || ''" x-text="m.from || '—'"></td>
+                                    <td class="px-4 py-2 text-zinc-200 text-xs max-w-[360px] truncate" :title="m.subject || ''" x-text="m.subject || '—'"></td>
+                                    <td class="px-4 py-2 text-xs">
+                                        <span class="px-2 py-0.5 rounded-full" :class="m.seen ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'" x-text="m.seen ? 'Seen' : 'Unread'"></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-zinc-400 text-xs" x-text="formatBytes(m.size)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div x-show="(inboxData?.messages || []).length === 0" class="text-center py-8 text-zinc-500 text-sm">
+                    No messages found in this folder.
+                </div>
+            </div>
         </div>
     </div>
 
@@ -415,6 +497,13 @@ function sendersPage() {
         showModal: false,
         showImport: false,
         showBulkModal: false,
+        showInbox: false,
+        inboxLoading: false,
+        inboxError: '',
+        inboxMailbox: null,
+        inboxData: null,
+        inboxFolder: 'INBOX',
+        inboxLimit: 30,
         editMode: false,
         editId: null,
         saving: false,
@@ -439,6 +528,69 @@ function sendersPage() {
                 this.senders = await apiCall('/api/warmup/sender-mailboxes');
             } catch(e) { this.senders = []; }
             this.$nextTick(() => lucide.createIcons());
+        },
+
+        closeInbox() {
+            this.showInbox = false;
+            this.inboxLoading = false;
+            this.inboxError = '';
+            this.inboxMailbox = null;
+            this.inboxData = null;
+        },
+
+        async openInbox(sender) {
+            this.inboxMailbox = sender;
+            this.inboxError = '';
+            this.inboxData = null;
+            this.showInbox = true;
+            await this.fetchInbox();
+        },
+
+        async fetchInbox() {
+            if (!this.inboxMailbox) return;
+
+            this.inboxLoading = true;
+            this.inboxError = '';
+
+            const folder = encodeURIComponent(this.inboxFolder || 'INBOX');
+            const limit = Math.max(1, Math.min(100, Number(this.inboxLimit || 30)));
+
+            try {
+                const res = await apiCall(`/api/warmup/sender-mailboxes/${this.inboxMailbox.id}/inbox?folder=${folder}&limit=${limit}`);
+                if (!res.success) {
+                    throw new Error(res.message || 'Failed to fetch inbox');
+                }
+                this.inboxData = res;
+            } catch (e) {
+                this.inboxError = e.message || 'Failed to fetch inbox';
+            } finally {
+                this.inboxLoading = false;
+                this.$nextTick(() => lucide.createIcons());
+            }
+        },
+
+        formatInboxDate(dateIso, fallbackDate) {
+            if (dateIso) {
+                return new Date(dateIso).toLocaleString();
+            }
+            return fallbackDate || '—';
+        },
+
+        formatBytes(size) {
+            const value = Number(size || 0);
+            if (!Number.isFinite(value) || value <= 0) return '0 B';
+
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let unit = 0;
+            let bytes = value;
+
+            while (bytes >= 1024 && unit < units.length - 1) {
+                bytes /= 1024;
+                unit++;
+            }
+
+            const precision = unit === 0 ? 0 : 1;
+            return `${bytes.toFixed(precision)} ${units[unit]}`;
         },
 
         resetForm() {
