@@ -311,11 +311,9 @@ class SeedService
 
         return match ($encryption) {
             'ssl' => [
-                $base . '/imap/ssl}INBOX',
                 $base . '/imap/ssl/novalidate-cert}INBOX',
             ],
             'tls' => [
-                $base . '/imap/tls}INBOX',
                 $base . '/imap/tls/novalidate-cert}INBOX',
             ],
             default => [
