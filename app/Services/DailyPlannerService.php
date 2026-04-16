@@ -325,6 +325,16 @@ class DailyPlannerService
         array $window
     ): void {
         foreach ($threads as $thread) {
+            $hasPendingReplyEvent = \App\Models\WarmupEvent::where('thread_id', $thread->id)
+                ->whereIn('event_type', ['seed_reply', 'sender_reply'])
+                ->whereIn('status', ['pending', 'locked', 'executing'])
+                ->exists();
+
+            if ($hasPendingReplyEvent) {
+                Log::info("DailyPlanner: Skip duplicate reply event for thread #{$thread->id} (pending reply already exists)");
+                continue;
+            }
+
             $nextActor = $thread->next_actor_type;
             $eventType = $nextActor === 'sender' ? 'sender_reply' : 'seed_reply';
 

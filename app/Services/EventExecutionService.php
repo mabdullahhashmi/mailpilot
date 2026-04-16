@@ -585,7 +585,11 @@ class EventExecutionService
         ]);
     }
 
-    private function canScheduleReplyForCurrentWarmupDay(Thread $thread): array
+    private function canScheduleReplyForCurrentWarmupDay(
+        Thread $thread,
+        ?int $excludeEventId = null,
+        bool $countPending = true
+    ): array
     {
         $campaign = $thread->warmupCampaign;
         $profile = $campaign?->profile;
@@ -603,11 +607,17 @@ class EventExecutionService
         }
 
         [$windowStart, $windowEnd] = $this->currentWarmupDayWindow($campaign);
+        $statuses = $countPending
+            ? ['pending', 'locked', 'executing', 'completed']
+            : ['locked', 'executing', 'completed'];
 
         $alreadyPlannedOrCompleted = WarmupEvent::where('warmup_campaign_id', $campaign->id)
             ->whereIn('event_type', ['seed_reply', 'sender_reply'])
             ->whereBetween('scheduled_at', [$windowStart, $windowEnd])
-            ->whereIn('status', ['pending', 'locked', 'executing', 'completed'])
+            ->whereIn('status', $statuses)
+            ->when($excludeEventId !== null, function ($q) use ($excludeEventId) {
+                $q->where('id', '!=', $excludeEventId);
+            })
             ->count();
 
         if ($alreadyPlannedOrCompleted >= $maxReplies) {
@@ -687,7 +697,9 @@ class EventExecutionService
 
     private function deferReplyIfOutsideDayRules(WarmupEvent $event, Thread $thread, string $eventType): ?array
     {
-        [$allowed, $reason] = $this->canScheduleReplyForCurrentWarmupDay($thread);
+        // Execution-time gate should ignore other pending reply rows and exclude itself,
+        // otherwise replies can self-defer forever when max_replies is low.
+        [$allowed, $reason] = $this->canScheduleReplyForCurrentWarmupDay($thread, $event->id, false);
 
         if ($allowed) {
             return null;
