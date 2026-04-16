@@ -206,14 +206,19 @@ class SeedService
 
             $password = Crypt::decryptString($imapPasswordEncrypted);
 
-            $encryptionFlag = match ($imapEncryption) {
-                'ssl' => '/ssl',
-                'tls' => '/tls',
-                default => '',
-            };
+            if (defined('IMAP_OPENTIMEOUT')) {
+                @imap_timeout(IMAP_OPENTIMEOUT, 8);
+            }
 
-            $connString = '{' . $imapHost . ':' . $imapPort . '/imap' . $encryptionFlag . '}INBOX';
-            $connection = @imap_open($connString, $imapUsername, $password, 0, 1);
+            $connStrings = $this->buildImapConnectionStrings($imapHost, $imapPort, $imapEncryption);
+            $connection = false;
+
+            foreach ($connStrings as $connString) {
+                $connection = @imap_open($connString, $imapUsername, $password, 0, 1);
+                if ($connection) {
+                    break;
+                }
+            }
 
             if (!$connection) {
                 throw new \RuntimeException(imap_last_error() ?: 'IMAP connection failed');
@@ -232,6 +237,91 @@ class SeedService
     public function fetchInbox(SeedMailbox $seed, int $limit = 30, string $folder = 'INBOX'): array
     {
         return $this->inboxFetchService->fetchInbox($seed, $limit, $folder);
+    }
+
+    public function testAllConnections(?string $status = null, int $limit = 500): array
+    {
+        $query = SeedMailbox::query()->orderBy('id');
+
+        $normalizedStatus = strtolower(trim((string) ($status ?? 'all')));
+        if ($normalizedStatus !== '' && $normalizedStatus !== 'all') {
+            $query->where('status', $normalizedStatus);
+        }
+
+        $limit = max(1, min(500, $limit));
+        $seeds = $query->limit($limit)->get();
+
+        $summary = [
+            'total' => $seeds->count(),
+            'fully_healthy' => 0,
+            'with_issues' => 0,
+            'smtp_pass' => 0,
+            'smtp_fail' => 0,
+            'imap_pass' => 0,
+            'imap_fail' => 0,
+            'issues' => [],
+        ];
+
+        foreach ($seeds as $seed) {
+            $smtp = $this->testSmtp($seed);
+            $imap = $this->testImap($seed);
+
+            $smtpOk = (bool) ($smtp['success'] ?? false);
+            $imapOk = (bool) ($imap['success'] ?? false);
+
+            if ($smtpOk) {
+                $summary['smtp_pass']++;
+            } else {
+                $summary['smtp_fail']++;
+            }
+
+            if ($imapOk) {
+                $summary['imap_pass']++;
+            } else {
+                $summary['imap_fail']++;
+            }
+
+            if ($smtpOk && $imapOk) {
+                $summary['fully_healthy']++;
+            } else {
+                $summary['with_issues']++;
+                $summary['issues'][] = [
+                    'seed_id' => $seed->id,
+                    'email_address' => $seed->email_address,
+                    'smtp' => [
+                        'success' => $smtpOk,
+                        'message' => $smtp['message'] ?? null,
+                    ],
+                    'imap' => [
+                        'success' => $imapOk,
+                        'message' => $imap['message'] ?? null,
+                    ],
+                ];
+            }
+        }
+
+        $summary['checked_at'] = now()->toIso8601String();
+
+        return $summary;
+    }
+
+    private function buildImapConnectionStrings(string $host, int $port, string $encryption): array
+    {
+        $base = '{' . $host . ':' . $port;
+
+        return match ($encryption) {
+            'ssl' => [
+                $base . '/imap/ssl}INBOX',
+                $base . '/imap/ssl/novalidate-cert}INBOX',
+            ],
+            'tls' => [
+                $base . '/imap/tls}INBOX',
+                $base . '/imap/tls/novalidate-cert}INBOX',
+            ],
+            default => [
+                $base . '/imap/notls}INBOX',
+            ],
+        };
     }
 
     private function recordSmtpTestResult(SeedMailbox $seed, bool $success): void

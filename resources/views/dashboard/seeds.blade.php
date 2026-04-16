@@ -9,6 +9,11 @@
     <div class="flex items-center justify-between mb-6">
         <span class="text-zinc-500 text-sm" x-text="seeds.length + ' seeds'"></span>
         <div class="flex items-center gap-2">
+            <button @click="checkAllSeedConnections()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 disabled:opacity-60 disabled:cursor-not-allowed" :disabled="checkingAllConnections">
+                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                <span x-show="!checkingAllConnections">Check All Connections</span>
+                <span x-show="checkingAllConnections">Checking...</span>
+            </button>
             <button @click="openQuickBulk()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition">
                 <i data-lucide="list-plus" class="w-4 h-4"></i> Quick Bulk Add
             </button>
@@ -18,6 +23,26 @@
             <button @click="showModal = true; editMode = false; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
                 <i data-lucide="plus" class="w-4 h-4"></i> Add Seed
             </button>
+        </div>
+    </div>
+
+    <div x-show="allConnectionCheckResult" class="mb-4 p-4 rounded-xl border" :class="(allConnectionCheckResult?.with_issues || 0) > 0 ? 'bg-amber-500/10 border-amber-500/25' : 'bg-emerald-500/10 border-emerald-500/25'">
+        <div class="flex flex-wrap gap-4 text-xs">
+            <span class="text-zinc-300">Checked: <strong x-text="allConnectionCheckResult?.total || 0"></strong></span>
+            <span class="text-emerald-300">Healthy: <strong x-text="allConnectionCheckResult?.fully_healthy || 0"></strong></span>
+            <span class="text-amber-300">With Issues: <strong x-text="allConnectionCheckResult?.with_issues || 0"></strong></span>
+            <span class="text-zinc-400">SMTP Pass/Fail: <strong x-text="(allConnectionCheckResult?.smtp_pass || 0) + '/' + (allConnectionCheckResult?.smtp_fail || 0)"></strong></span>
+            <span class="text-zinc-400">IMAP Pass/Fail: <strong x-text="(allConnectionCheckResult?.imap_pass || 0) + '/' + (allConnectionCheckResult?.imap_fail || 0)"></strong></span>
+        </div>
+
+        <div x-show="(allConnectionCheckResult?.issues || []).length > 0" class="mt-3 max-h-52 overflow-y-auto space-y-1 pr-1">
+            <template x-for="issue in (allConnectionCheckResult?.issues || [])" :key="issue.seed_id + '-' + issue.email_address">
+                <div class="text-[11px] text-zinc-300 border border-white/10 rounded-lg px-2.5 py-2">
+                    <p class="text-zinc-200 font-medium" x-text="issue.email_address"></p>
+                    <p class="text-zinc-400" x-text="'SMTP: ' + (issue.smtp?.success ? 'OK' : (issue.smtp?.message || 'Failed'))"></p>
+                    <p class="text-zinc-400" x-text="'IMAP: ' + (issue.imap?.success ? 'OK' : (issue.imap?.message || 'Failed'))"></p>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -541,11 +566,44 @@ function seedsPage() {
         bulkCap: 20,
         bulkLoading: false,
         bulkResult: null,
+        checkingAllConnections: false,
+        allConnectionCheckResult: null,
         testingSeedChecks: {},
         form: {},
 
         async init() { await this.load(); this.$nextTick(() => lucide.createIcons()); },
         async load() { try { this.seeds = await apiCall('/api/warmup/seed-mailboxes'); } catch(e) { this.seeds = []; } this.$nextTick(() => lucide.createIcons()); },
+
+        async checkAllSeedConnections() {
+            if (this.checkingAllConnections) return;
+
+            if (!confirm('Run SMTP + IMAP checks for all seed mailboxes now?')) {
+                return;
+            }
+
+            this.checkingAllConnections = true;
+            this.allConnectionCheckResult = null;
+            showToast('Checking all seed SMTP/IMAP connections. This may take some time...', 'info');
+
+            try {
+                const res = await apiCall('/api/warmup/seed-mailboxes/test-all-connections', 'POST', {
+                    status: 'all',
+                    limit: 500,
+                });
+
+                this.allConnectionCheckResult = res;
+                await this.load();
+
+                const issueCount = Number(res.with_issues || 0);
+                const msg = `Checked ${res.total || 0} seeds: ${res.fully_healthy || 0} healthy, ${issueCount} with issues.`;
+                showToast(msg, issueCount > 0 ? 'info' : 'success');
+            } catch (e) {
+                showToast('Bulk connection check failed: ' + e.message, 'error');
+            } finally {
+                this.checkingAllConnections = false;
+                this.$nextTick(() => lucide.createIcons());
+            }
+        },
 
         resetForm() {
             this.form = { email_address: '', provider: '', smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_encryption: 'tls', imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_encryption: 'ssl', daily_interaction_cap: 20 };

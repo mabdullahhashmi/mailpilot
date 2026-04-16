@@ -351,6 +351,26 @@ class SeedMailboxController extends Controller
         return response()->json($result);
     }
 
+    public function testAllConnections(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'nullable|in:all,active,paused,disabled,failed',
+            'limit' => 'nullable|integer|min:1|max:500',
+        ]);
+
+        @set_time_limit(0);
+
+        $summary = $this->service->testAllConnections(
+            (string) ($validated['status'] ?? 'all'),
+            (int) ($validated['limit'] ?? 500)
+        );
+
+        return response()->json([
+            'success' => true,
+            ...$summary,
+        ]);
+    }
+
     public function destroy(int $id): JsonResponse
     {
         $seed = \App\Models\SeedMailbox::findOrFail($id);

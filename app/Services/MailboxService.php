@@ -239,11 +239,75 @@ class MailboxService
     public function testImap(SenderMailbox $mailbox): array
     {
         try {
-            $password = Crypt::decryptString($mailbox->imap_password);
-            $encryption = $mailbox->imap_encryption === 'ssl' ? '/ssl' : '';
-            $connString = '{' . $mailbox->imap_host . ':' . $mailbox->imap_port . '/imap' . $encryption . '}INBOX';
+            if (!function_exists('imap_open')) {
+                $mailbox->update([
+                    'last_imap_test_at' => now(),
+                    'last_imap_test_result' => 'fail',
+                ]);
 
-            $connection = @imap_open($connString, $mailbox->imap_username, $password);
+                return [
+                    'success' => false,
+                    'message' => 'PHP IMAP extension is not enabled on this server.',
+                ];
+            }
+
+            $imapHost = trim((string) ($mailbox->imap_host ?? ''));
+            $imapPort = (int) ($mailbox->imap_port ?? 0);
+            $imapUsername = trim((string) ($mailbox->imap_username ?? ''));
+            $imapPasswordEncrypted = (string) ($mailbox->imap_password ?? '');
+            $imapEncryption = strtolower(trim((string) ($mailbox->imap_encryption ?? 'ssl')));
+
+            if ($imapHost === '' || str_contains($imapHost, '@')) {
+                $mailbox->update([
+                    'last_imap_test_at' => now(),
+                    'last_imap_test_result' => 'fail',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Invalid IMAP host. Use server host like imap.gmail.com (not an email address).',
+                ];
+            }
+
+            if ($imapPort <= 0 || $imapUsername === '' || $imapPasswordEncrypted === '') {
+                $mailbox->update([
+                    'last_imap_test_at' => now(),
+                    'last_imap_test_result' => 'fail',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'IMAP host, port, username, and password are required to verify IMAP.',
+                ];
+            }
+
+            if (!in_array($imapEncryption, ['tls', 'ssl', 'none'], true)) {
+                $mailbox->update([
+                    'last_imap_test_at' => now(),
+                    'last_imap_test_result' => 'fail',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'IMAP encryption must be one of: tls, ssl, none.',
+                ];
+            }
+
+            $password = Crypt::decryptString($mailbox->imap_password);
+
+            if (defined('IMAP_OPENTIMEOUT')) {
+                @imap_timeout(IMAP_OPENTIMEOUT, 8);
+            }
+
+            $connStrings = $this->buildImapConnectionStrings($imapHost, $imapPort, $imapEncryption);
+            $connection = false;
+
+            foreach ($connStrings as $connString) {
+                $connection = @imap_open($connString, $imapUsername, $password, 0, 1);
+                if ($connection) {
+                    break;
+                }
+            }
 
             if (!$connection) {
                 throw new \RuntimeException(imap_last_error() ?: 'IMAP connection failed');
@@ -265,6 +329,25 @@ class MailboxService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    private function buildImapConnectionStrings(string $host, int $port, string $encryption): array
+    {
+        $base = '{' . $host . ':' . $port;
+
+        return match ($encryption) {
+            'ssl' => [
+                $base . '/imap/ssl}INBOX',
+                $base . '/imap/ssl/novalidate-cert}INBOX',
+            ],
+            'tls' => [
+                $base . '/imap/tls}INBOX',
+                $base . '/imap/tls/novalidate-cert}INBOX',
+            ],
+            default => [
+                $base . '/imap/notls}INBOX',
+            ],
+        };
     }
 
     public function fetchInbox(SenderMailbox $mailbox, int $limit = 30, string $folder = 'INBOX'): array
