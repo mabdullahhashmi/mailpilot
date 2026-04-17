@@ -40,7 +40,7 @@
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <h2 class="text-white font-bold text-xl" x-text="report?.campaign_name"></h2>
-                    <p class="text-zinc-500 text-xs mt-1">Report generated: <span x-text="new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })"></span></p>
+                    <p class="text-zinc-500 text-xs mt-1">Report generated: <span x-text="portalDate(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })"></span></p>
                 </div>
                 <div class="text-right">
                     <span class="badge px-3 py-1 rounded-full text-xs"

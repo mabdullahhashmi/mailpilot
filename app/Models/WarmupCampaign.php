@@ -13,7 +13,7 @@ class WarmupCampaign extends Model
         'campaign_name', 'sender_mailbox_id', 'domain_id', 'warmup_profile_id',
         'start_date', 'planned_duration_days', 'day_duration_minutes', 'current_day_number',
         'current_stage', 'status', 'maintenance_mode_enabled',
-        'time_window_start', 'time_window_end',
+        'time_window_start', 'time_window_end', 'timezone',
         'completed_at', 'paused_at',
     ];
 

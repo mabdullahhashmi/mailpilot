@@ -120,12 +120,12 @@
         }
     </style>
 </head>
-<body class="h-full bg-surface-950 text-zinc-300 font-sans antialiased" x-data="{ sidebarOpen: true, mobileMenu: false }">
+<body class="h-full bg-surface-950 text-zinc-300 font-sans antialiased" x-data="layoutShell()" x-init="init()">
 
     <div class="flex h-full">
         <!-- Sidebar -->
-        <aside class="fixed inset-y-0 left-0 z-40 flex flex-col transition-all duration-300"
-               :class="sidebarOpen ? 'w-64' : 'w-20'"
+         <aside class="fixed inset-y-0 left-0 z-40 flex flex-col transition-all duration-300 transform w-64 lg:translate-x-0"
+             :class="[mobileMenu ? 'translate-x-0' : '-translate-x-full', sidebarOpen ? 'lg:w-64' : 'lg:w-20']"
                style="background: linear-gradient(180deg, #1a1a2e 0%, #16162a 50%, #0f0f1a 100%); border-right: 1px solid rgba(255,255,255,0.06);">
 
             <!-- Logo -->
@@ -235,8 +235,10 @@
             </div>
         </aside>
 
+        <div x-show="mobileMenu" x-cloak class="fixed inset-0 z-30 bg-black/50 lg:hidden" @click="mobileMenu = false"></div>
+
         <!-- Main Content -->
-        <main class="flex-1 transition-all duration-300 overflow-auto" :class="sidebarOpen ? 'ml-64' : 'ml-20'">
+        <main class="flex-1 transition-all duration-300 overflow-auto" :class="sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'">
 
             <!-- Top Bar -->
             <header class="sticky top-0 z-30 h-16 flex items-center justify-between px-6 border-b border-white/5" style="background: rgba(10,10,20,0.8); backdrop-filter: blur(12px);">
@@ -249,10 +251,18 @@
                         <p class="text-zinc-500 text-xs">@yield('page-description', 'Welcome to MailPilot warmup engine')</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 sm:gap-3">
                     <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                         <div class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></div>
                         <span class="text-emerald-400 text-xs font-medium">Engine Active</span>
+                    </div>
+
+                    <div class="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg border border-white/10 bg-white/[0.03]">
+                        <i data-lucide="clock-3" class="w-3.5 h-3.5 text-zinc-500"></i>
+                        <select x-model="timezoneView" @change="persistTimezoneView()" class="input-dark text-xs px-2 py-1 rounded-md border-0 bg-transparent min-w-[168px]">
+                            <option value="local">Local Time (Browser)</option>
+                            <option value="texas">Texas Time (US Central)</option>
+                        </select>
                     </div>
 
                     <!-- Alert Bell -->
@@ -303,7 +313,7 @@
             </header>
 
             <!-- Page Content -->
-            <div class="p-6 fade-in">
+            <div class="p-4 sm:p-6 fade-in">
                 @yield('content')
             </div>
         </main>
@@ -314,6 +324,58 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
         });
+
+        function layoutShell() {
+            return {
+                sidebarOpen: true,
+                mobileMenu: false,
+                timezoneView: 'local',
+                init() {
+                    this.timezoneView = localStorage.getItem('portal_timezone_view') || 'local';
+                    window.__portalTimezoneView = this.timezoneView;
+                    if (window.innerWidth < 1024) {
+                        this.sidebarOpen = true;
+                        this.mobileMenu = false;
+                    }
+                },
+                persistTimezoneView() {
+                    localStorage.setItem('portal_timezone_view', this.timezoneView);
+                    window.__portalTimezoneView = this.timezoneView;
+                    window.dispatchEvent(new CustomEvent('portal-timezone-changed', {
+                        detail: { timezoneView: this.timezoneView }
+                    }));
+                },
+            };
+        }
+
+        function portalSelectedTimeZone() {
+            const view = window.__portalTimezoneView || localStorage.getItem('portal_timezone_view') || 'local';
+            return view === 'texas' ? 'America/Chicago' : undefined;
+        }
+
+        function portalDateTime(value, options = {}) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '—';
+            const timeZone = portalSelectedTimeZone();
+            return date.toLocaleString(undefined, { ...(timeZone ? { timeZone } : {}), ...options });
+        }
+
+        function portalDate(value, options = {}) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '—';
+            const timeZone = portalSelectedTimeZone();
+            return date.toLocaleDateString(undefined, { ...(timeZone ? { timeZone } : {}), ...options });
+        }
+
+        function portalTime(value, options = {}) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '—';
+            const timeZone = portalSelectedTimeZone();
+            return date.toLocaleTimeString(undefined, { ...(timeZone ? { timeZone } : {}), ...options });
+        }
 
         // Helper: API fetch with CSRF
         async function apiCall(url, method = 'GET', body = null) {

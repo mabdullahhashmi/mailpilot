@@ -571,7 +571,7 @@ function sendersPage() {
 
         formatInboxDate(dateIso, fallbackDate) {
             if (dateIso) {
-                return new Date(dateIso).toLocaleString();
+                return portalDateTime(dateIso);
             }
             return fallbackDate || '—';
         },

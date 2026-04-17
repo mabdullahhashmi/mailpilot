@@ -138,7 +138,7 @@ function logsPage() {
             } catch(e) { this.logs = []; }
             this.$nextTick(() => lucide.createIcons());
         },
-        formatTime(t) { if (!t) return '—'; const d = new Date(t); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); },
+        formatTime(t) { if (!t) return '—'; return portalDate(t, { month: 'short', day: 'numeric' }) + ' ' + portalTime(t, { hour: '2-digit', minute: '2-digit' }); },
         typeIcon(type) {
             const map = {
                 send_new_thread: { icon: 'send', bg: 'bg-brand-500/15', color: 'text-brand-400' },

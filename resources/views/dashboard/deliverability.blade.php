@@ -682,7 +682,7 @@ function deliverabilityPage() {
                 const res = await fetch('/api/warmup/deliverability/overview');
                 this.overview = await res.json();
                 this.domainReputations = this.overview?.reputation?.domains_list || [];
-                this.lastScan = new Date().toLocaleTimeString();
+                this.lastScan = portalTime(new Date(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
             } catch (e) {
                 console.error('Failed to load overview:', e);
             }

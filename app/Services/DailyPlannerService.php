@@ -324,6 +324,8 @@ class DailyPlannerService
         \Illuminate\Support\Collection $threads,
         array $window
     ): void {
+        $scheduleTimezone = $campaign->timezone ?: ($campaign->senderMailbox->timezone ?: 'UTC');
+
         foreach ($threads as $thread) {
             $hasPendingReplyEvent = \App\Models\WarmupEvent::where('thread_id', $thread->id)
                 ->whereIn('event_type', ['seed_reply', 'sender_reply'])
@@ -347,7 +349,7 @@ class DailyPlannerService
 
             $scheduledAt = $lastMessage && $lastMessage->sent_at
                 ? $lastMessage->sent_at->addMinutes($delayMinutes)
-                : $this->randomizer->scheduledTime($window['start'], $window['end'], $campaign->senderMailbox->timezone);
+                : $this->randomizer->scheduledTime($window['start'], $window['end'], $scheduleTimezone);
 
             // Ensure within working window
             $scheduledAt = max($scheduledAt, now());
@@ -388,10 +390,11 @@ class DailyPlannerService
     private function pickScheduledAt(WarmupCampaign $campaign, array $window): Carbon
     {
         if (!$this->isAcceleratedMode($campaign)) {
+            $timezone = $campaign->timezone ?: ($campaign->senderMailbox->timezone ?: 'UTC');
             return $this->randomizer->scheduledTime(
                 $window['start'],
                 $window['end'],
-                $campaign->senderMailbox->timezone
+                $timezone
             );
         }
 

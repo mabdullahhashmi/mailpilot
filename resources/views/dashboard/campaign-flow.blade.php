@@ -326,7 +326,7 @@ function campaignFlowTest() {
 
         formatDate(dt) {
             if (!dt) return '—';
-            return new Date(dt).toLocaleString();
+            return portalDateTime(dt);
         },
 
         statusColor(status) {

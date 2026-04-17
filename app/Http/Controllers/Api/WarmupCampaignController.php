@@ -41,6 +41,7 @@ class WarmupCampaignController extends Controller
             'warmup_profile_id' => 'required|exists:warmup_profiles,id',
             'time_window_start' => 'sometimes|string',
             'time_window_end' => 'sometimes|string',
+            'timezone' => 'nullable|string|max:64',
         ]);
 
         $campaign = $this->campaignService->start(
@@ -56,6 +57,9 @@ class WarmupCampaignController extends Controller
         }
         if (!empty($validated['time_window_end'])) {
             $campaign->update(['time_window_end' => $validated['time_window_end']]);
+        }
+        if (array_key_exists('timezone', $validated)) {
+            $campaign->update(['timezone' => $validated['timezone'] ?: null]);
         }
 
         // Auto-plan events immediately after campaign creation
@@ -78,6 +82,7 @@ class WarmupCampaignController extends Controller
             'campaign_name_prefix' => 'nullable|string|max:255',
             'time_window_start' => 'nullable|string',
             'time_window_end' => 'nullable|string',
+            'timezone' => 'nullable|string|max:64',
             'skip_existing_active' => 'nullable|boolean',
         ]);
 
@@ -134,6 +139,10 @@ class WarmupCampaignController extends Controller
 
                 if (!empty($validated['time_window_end'])) {
                     $updates['time_window_end'] = $validated['time_window_end'];
+                }
+
+                if (array_key_exists('timezone', $validated)) {
+                    $updates['timezone'] = $validated['timezone'] ?: null;
                 }
 
                 if (!empty($updates)) {

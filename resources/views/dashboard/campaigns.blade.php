@@ -6,9 +6,9 @@
 @section('content')
 <div x-data="campaignsPage()" x-init="init()">
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <span class="text-zinc-500 text-sm" x-text="campaigns.length + ' campaigns'"></span>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             <button @click="openBulkCreateModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 transition">
                 <i data-lucide="layers-3" class="w-4 h-4"></i> Bulk Campaigns
             </button>
@@ -149,6 +149,14 @@
                         <input type="time" x-model="form.time_window_end" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" value="22:00">
                     </div>
                 </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Timezone</label>
+                    <select x-model="form.timezone" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                        <template x-for="tz in timezoneOptions" :key="tz.value || 'sender-default'">
+                            <option :value="tz.value" x-text="tz.label"></option>
+                        </template>
+                    </select>
+                </div>
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="showModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Cancel</button>
                     <button type="submit" class="btn-primary px-5 py-2.5 rounded-xl text-sm text-white font-medium">Create Campaign</button>
@@ -216,14 +224,23 @@
                 </div>
             </div>
 
+            <div class="mb-4 max-w-md">
+                <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Timezone</label>
+                <select x-model="bulkForm.timezone" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                    <template x-for="tz in timezoneOptions" :key="'bulk-' + (tz.value || 'sender-default')">
+                        <option :value="tz.value" x-text="tz.label"></option>
+                    </template>
+                </select>
+            </div>
+
             <div class="flex items-center gap-2 mb-3">
                 <button type="button" @click="selectAllEligibleSenders()" class="px-3 py-2 rounded-lg text-xs text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10">Select All Active</button>
                 <button type="button" @click="clearBulkSelection()" class="px-3 py-2 rounded-lg text-xs text-zinc-300 bg-white/0 hover:bg-white/5 border border-white/10">Clear</button>
                 <span class="ml-auto text-[11px] text-zinc-500" x-text="(bulkForm.sender_mailbox_ids?.length || 0) + ' sender(s) selected'"></span>
             </div>
 
-            <div class="border border-white/10 rounded-xl overflow-hidden">
-                <table class="w-full">
+            <div class="border border-white/10 rounded-xl overflow-hidden overflow-x-auto">
+                <table class="w-full min-w-[760px]">
                     <thead>
                         <tr class="border-b border-white/10 bg-white/[0.02]">
                             <th class="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Select</th>
@@ -289,6 +306,13 @@ function campaignsPage() {
         bulkResult: null,
         form: {},
         bulkForm: {},
+        timezoneOptions: [
+            { value: '', label: 'Use Sender Timezone (Default)' },
+            { value: 'America/Chicago', label: 'US Central (Texas)' },
+            { value: 'America/New_York', label: 'US Eastern' },
+            { value: 'America/Los_Angeles', label: 'US Pacific' },
+            { value: 'UTC', label: 'UTC' },
+        ],
         async init() {
             this.resetForm();
             this.resetBulkForm();
@@ -326,13 +350,14 @@ function campaignsPage() {
         hasShortTestProfile() {
             return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
-        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00' }; },
+        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: '' }; },
         resetBulkForm() {
             this.bulkForm = {
                 campaign_name_prefix: '',
                 warmup_profile_id: '',
                 time_window_start: '08:00',
                 time_window_end: '22:00',
+                timezone: '',
                 skip_existing_active: true,
                 sender_mailbox_ids: [],
             };
@@ -386,6 +411,7 @@ function campaignsPage() {
                     campaign_name_prefix: (this.bulkForm.campaign_name_prefix || '').trim() || null,
                     time_window_start: this.bulkForm.time_window_start || null,
                     time_window_end: this.bulkForm.time_window_end || null,
+                    timezone: this.bulkForm.timezone || null,
                     skip_existing_active: !!this.bulkForm.skip_existing_active,
                 };
 

@@ -404,7 +404,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-sm text-zinc-400" x-text="(th.actual_message_count || 0) + ' / ' + (th.planned_message_count || '—')"></td>
                                 <td class="px-5 py-3 text-sm text-zinc-400 truncate max-w-[180px]" x-text="th.subject_line || '—'"></td>
-                                <td class="px-5 py-3 text-sm text-zinc-500" x-text="new Date(th.created_at).toLocaleDateString()"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-500" x-text="portalDate(th.created_at)"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -447,8 +447,8 @@
                                 </td>
                                 <td class="px-5 py-3 text-sm text-zinc-400" x-text="(ev.sender_email || '—') + ' → ' + (ev.seed_email || '—')"></td>
                                 <td class="px-5 py-3 text-sm text-zinc-400 truncate max-w-[220px]" x-text="ev.subject || '—'"></td>
-                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.scheduled_at ? new Date(ev.scheduled_at).toLocaleString() : '—'"></td>
-                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.executed_at ? new Date(ev.executed_at).toLocaleString() : '—'"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.scheduled_at ? portalDateTime(ev.scheduled_at) : '—'"></td>
+                                <td class="px-5 py-3 text-sm text-zinc-400" x-text="ev.executed_at ? portalDateTime(ev.executed_at) : '—'"></td>
                                 <td class="px-5 py-3 text-sm text-red-400/80 truncate max-w-[200px]" x-text="ev.failure_reason || '—'"></td>
                             </tr>
                         </template>
@@ -676,8 +676,7 @@ function campaignDetail() {
 
         formatTime(isoStr) {
             if (!isoStr) return '—';
-            const d = new Date(isoStr);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            return portalTime(isoStr, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
         },
 
         getCountdown(isoStr) {

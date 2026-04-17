@@ -280,7 +280,7 @@ function systemHealthPage() {
             this.loading = true;
             try {
                 this.data = await apiCall('/api/warmup/system-health');
-                this.lastRefresh = new Date().toLocaleTimeString();
+                this.lastRefresh = portalTime(new Date(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
             } catch(e) { showToast('Failed to load system health', 'error'); }
             this.loading = false;
             this.$nextTick(() => lucide.createIcons());
@@ -324,8 +324,7 @@ function systemHealthPage() {
 
         formatTime(t) {
             if (!t) return '—';
-            const d = new Date(t);
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            return portalDate(t, { month: 'short', day: 'numeric' }) + ' ' + portalTime(t, { hour: '2-digit', minute: '2-digit' });
         },
 
         exportUrl() {

@@ -694,11 +694,11 @@ function seedsPage() {
         },
         formatDateTime(iso) {
             if (!iso) return '—';
-            return new Date(iso).toLocaleString();
+            return portalDateTime(iso);
         },
         formatInboxDate(dateIso, fallbackDate) {
             if (dateIso) {
-                return new Date(dateIso).toLocaleString();
+                return portalDateTime(dateIso);
             }
             return fallbackDate || '—';
         },
