@@ -26,6 +26,9 @@ class SeedService
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
         }
+        if (!isset($data['imap_password']) && isset($data['smtp_password'])) {
+            $data['imap_password'] = $data['smtp_password'];
+        }
         if (isset($data['imap_password'])) {
             $data['imap_password'] = Crypt::encryptString($data['imap_password']);
         }
@@ -46,6 +49,9 @@ class SeedService
 
         if (isset($data['smtp_password'])) {
             $data['smtp_password'] = Crypt::encryptString($data['smtp_password']);
+        }
+        if (!isset($data['imap_password']) && isset($data['smtp_password'])) {
+            $data['imap_password'] = $data['smtp_password'];
         }
         if (isset($data['imap_password'])) {
             $data['imap_password'] = Crypt::encryptString($data['imap_password']);
@@ -188,11 +194,11 @@ class SeedService
                 ];
             }
 
-            if ($imapPort <= 0 || $imapUsername === '' || $imapPasswordEncrypted === '') {
+            if ($imapPort <= 0 || $imapUsername === '') {
                 $this->recordImapTestResult($seed, false);
                 return [
                     'success' => false,
-                    'message' => 'IMAP host, port, username, and password are required to verify IMAP.',
+                    'message' => 'IMAP host, port, and username are required to verify IMAP.',
                 ];
             }
 
@@ -201,6 +207,18 @@ class SeedService
                 return [
                     'success' => false,
                     'message' => 'IMAP encryption must be one of: tls, ssl, none.',
+                ];
+            }
+
+            if ($imapPasswordEncrypted === '') {
+                $imapPasswordEncrypted = (string) ($seed->smtp_password ?? '');
+            }
+
+            if ($imapPasswordEncrypted === '') {
+                $this->recordImapTestResult($seed, false);
+                return [
+                    'success' => false,
+                    'message' => 'IMAP password is missing and no SMTP password fallback is available.',
                 ];
             }
 

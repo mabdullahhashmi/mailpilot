@@ -269,7 +269,7 @@ class MailboxService
                 ];
             }
 
-            if ($imapPort <= 0 || $imapUsername === '' || $imapPasswordEncrypted === '') {
+            if ($imapPort <= 0 || $imapUsername === '') {
                 $mailbox->update([
                     'last_imap_test_at' => now(),
                     'last_imap_test_result' => 'fail',
@@ -277,7 +277,7 @@ class MailboxService
 
                 return [
                     'success' => false,
-                    'message' => 'IMAP host, port, username, and password are required to verify IMAP.',
+                    'message' => 'IMAP host, port, and username are required to verify IMAP.',
                 ];
             }
 
@@ -293,7 +293,23 @@ class MailboxService
                 ];
             }
 
-            $password = Crypt::decryptString($mailbox->imap_password);
+            if ($imapPasswordEncrypted === '') {
+                $imapPasswordEncrypted = (string) ($mailbox->smtp_password ?? '');
+            }
+
+            if ($imapPasswordEncrypted === '') {
+                $mailbox->update([
+                    'last_imap_test_at' => now(),
+                    'last_imap_test_result' => 'fail',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'IMAP password is missing and no SMTP password fallback is available.',
+                ];
+            }
+
+            $password = Crypt::decryptString($imapPasswordEncrypted);
 
             if (defined('IMAP_OPENTIMEOUT')) {
                 @imap_timeout(IMAP_OPENTIMEOUT, 8);
@@ -360,7 +376,8 @@ class MailboxService
 
     public function getDecryptedImapPassword(SenderMailbox $mailbox): string
     {
-        return Crypt::decryptString($mailbox->imap_password);
+        $encrypted = $mailbox->imap_password ?: $mailbox->smtp_password;
+        return Crypt::decryptString($encrypted);
     }
 
     private function resolveOrCreateDomain(string $email): Domain
