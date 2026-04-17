@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\WarmupEvent;
 use App\Models\SchedulerRun;
+use App\Models\SystemSetting;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
@@ -49,6 +50,8 @@ class SchedulerService
 
         $batchSize = max(1, $batchSize);
         $maxBatches = max(1, $maxBatches);
+        $globalGapSeconds = $this->resolveGlobalGapSeconds();
+        $nextGlobalExecutionAt = $this->resolveNextGlobalExecutionAt($globalGapSeconds);
 
         while ($batchesRun < $maxBatches) {
             $batchesRun++;
@@ -68,6 +71,26 @@ class SchedulerService
             $dueFound += $dueEvents->count();
 
             foreach ($dueEvents as $event) {
+                if (now()->lt($nextGlobalExecutionAt)) {
+                    $event->update([
+                        'scheduled_at' => $nextGlobalExecutionAt,
+                        'lock_token' => null,
+                        'lock_expires_at' => null,
+                    ]);
+
+                    $slot = \App\Models\SendSlot::where('warmup_event_id', $event->id)->first();
+                    if ($slot) {
+                        $slot->update([
+                            'planned_at' => $nextGlobalExecutionAt,
+                            'slot_date' => $nextGlobalExecutionAt->format('Y-m-d'),
+                        ]);
+                    }
+
+                    $nextGlobalExecutionAt = $nextGlobalExecutionAt->copy()->addSeconds($globalGapSeconds);
+                    $skipped++;
+                    continue;
+                }
+
                 $lockToken = Str::uuid()->toString();
 
                 // Atomic lock acquisition
@@ -118,6 +141,9 @@ class SchedulerService
                     }
 
                     $failed++;
+                } finally {
+                    $base = now()->gt($nextGlobalExecutionAt) ? now() : $nextGlobalExecutionAt;
+                    $nextGlobalExecutionAt = $base->copy()->addSeconds($globalGapSeconds);
                 }
             }
 
@@ -181,5 +207,25 @@ class SchedulerService
             ]);
 
         return $releasedLockedOrExecuting + $releasedPendingWithStaleToken;
+    }
+
+    private function resolveGlobalGapSeconds(): int
+    {
+        $configured = (int) SystemSetting::get('global_event_gap_seconds', 600);
+        return max(30, min(3600, $configured));
+    }
+
+    private function resolveNextGlobalExecutionAt(int $gapSeconds)
+    {
+        $lastExecutedAt = WarmupEvent::whereNotNull('executed_at')
+            ->orderByDesc('executed_at')
+            ->value('executed_at');
+
+        if (!$lastExecutedAt) {
+            return now();
+        }
+
+        $nextAt = \Carbon\Carbon::parse($lastExecutedAt)->addSeconds($gapSeconds);
+        return $nextAt->lt(now()) ? now() : $nextAt;
     }
 }
