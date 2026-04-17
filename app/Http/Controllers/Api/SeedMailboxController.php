@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\SeedService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SeedMailboxController extends Controller
 {
@@ -374,7 +375,12 @@ class SeedMailboxController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $seed = \App\Models\SeedMailbox::findOrFail($id);
-        $seed->delete();
+
+        DB::transaction(function () use ($seed) {
+            $seed->threads()->delete();
+            $seed->delete();
+        });
+
         return response()->json(['message' => 'Deleted']);
     }
 
