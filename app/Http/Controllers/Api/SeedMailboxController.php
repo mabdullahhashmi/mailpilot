@@ -45,6 +45,14 @@ class SeedMailboxController extends Controller
             'imap_port' => 993,
             'imap_encryption' => 'ssl',
         ],
+        'hostinger' => [
+            'smtp_host' => 'smtp.hostinger.com',
+            'smtp_port' => 465,
+            'smtp_encryption' => 'ssl',
+            'imap_host' => 'imap.hostinger.com',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
     ];
 
     public function index(): JsonResponse
@@ -82,7 +90,7 @@ class SeedMailboxController extends Controller
     {
         $validated = $request->validate([
             'bulk_text' => 'required|string',
-            'provider' => 'nullable|in:google,microsoft,zoho,yahoo',
+            'provider' => 'nullable|in:google,microsoft,zoho,yahoo,hostinger',
             'daily_interaction_cap' => 'nullable|integer|min:1|max:1000',
         ]);
 
@@ -114,6 +122,10 @@ class SeedMailboxController extends Controller
             $email = $parts[0] ?? '';
             $password = preg_replace('/\s+/', '', (string) ($parts[1] ?? ''));
             $provider = strtolower($parts[2] ?? $defaultProvider);
+            $provider = match ($provider) {
+                'hostinger-email', 'hostinger_business', 'hostingerbusiness' => 'hostinger',
+                default => $provider,
+            };
 
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $errors[] = "Line {$lineNumber}: invalid email '{$email}'";
@@ -169,7 +181,7 @@ class SeedMailboxController extends Controller
             'imported' => $imported,
             'skipped' => $skipped,
             'errors' => array_slice($errors, 0, 50),
-            'format' => 'email,app_password[,provider] (provider optional: google|microsoft|zoho|yahoo)',
+            'format' => 'email,app_password[,provider] (provider optional: google|microsoft|zoho|yahoo|hostinger)',
         ]);
     }
 
