@@ -53,6 +53,14 @@ class SeedMailboxController extends Controller
             'imap_port' => 993,
             'imap_encryption' => 'ssl',
         ],
+        'titan' => [
+            'smtp_host' => 'smtp.titan.email',
+            'smtp_port' => 465,
+            'smtp_encryption' => 'ssl',
+            'imap_host' => 'imap.titan.email',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+        ],
     ];
 
     public function index(): JsonResponse
@@ -90,7 +98,7 @@ class SeedMailboxController extends Controller
     {
         $validated = $request->validate([
             'bulk_text' => 'required|string',
-            'provider' => 'nullable|in:google,microsoft,zoho,yahoo,hostinger',
+            'provider' => 'nullable|in:google,microsoft,zoho,yahoo,hostinger,titan',
             'daily_interaction_cap' => 'nullable|integer|min:1|max:1000',
         ]);
 
@@ -124,6 +132,7 @@ class SeedMailboxController extends Controller
             $provider = strtolower($parts[2] ?? $defaultProvider);
             $provider = match ($provider) {
                 'hostinger-email', 'hostinger_business', 'hostingerbusiness' => 'hostinger',
+                'titanmail', 'titan-mail' => 'titan',
                 default => $provider,
             };
 
@@ -181,7 +190,7 @@ class SeedMailboxController extends Controller
             'imported' => $imported,
             'skipped' => $skipped,
             'errors' => array_slice($errors, 0, 50),
-            'format' => 'email,app_password[,provider] (provider optional: google|microsoft|zoho|yahoo|hostinger)',
+            'format' => 'email,app_password[,provider] (provider optional: google|microsoft|zoho|yahoo|hostinger|titan)',
         ]);
     }
 

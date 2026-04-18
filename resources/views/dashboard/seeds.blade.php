@@ -146,6 +146,7 @@
                             <option value="zoho">Zoho Mail</option>
                             <option value="yahoo">Yahoo Mail</option>
                             <option value="hostinger">Hostinger Email</option>
+                            <option value="titan">Titan Mail</option>
                         </select>
                     </div>
                     <div>
@@ -334,6 +335,7 @@
                             <option value="zoho">Zoho Mail</option>
                             <option value="yahoo">Yahoo Mail</option>
                             <option value="hostinger">Hostinger Email</option>
+                            <option value="titan">Titan Mail</option>
                         </select>
                     </div>
                 </div>
@@ -540,6 +542,7 @@ const PROVIDER_DEFAULTS = {
     zoho:      { smtp_host: 'smtp.zoho.com',         smtp_port: 587, smtp_encryption: 'tls', imap_host: 'imap.zoho.com',            imap_port: 993, imap_encryption: 'ssl' },
     yahoo:     { smtp_host: 'smtp.mail.yahoo.com',   smtp_port: 587, smtp_encryption: 'tls', imap_host: 'imap.mail.yahoo.com',      imap_port: 993, imap_encryption: 'ssl' },
     hostinger: { smtp_host: 'smtp.hostinger.com',    smtp_port: 465, smtp_encryption: 'ssl', imap_host: 'imap.hostinger.com',       imap_port: 993, imap_encryption: 'ssl' },
+    titan:     { smtp_host: 'smtp.titan.email',      smtp_port: 465, smtp_encryption: 'ssl', imap_host: 'imap.titan.email',         imap_port: 993, imap_encryption: 'ssl' },
 };
 
 function seedsPage() {
