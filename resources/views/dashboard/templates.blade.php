@@ -7,10 +7,10 @@
 <div x-data="templatesPage()" x-init="init()">
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <div class="flex flex-wrap items-center gap-3">
             <span class="text-zinc-500 text-sm" x-text="templates.length + ' templates'"></span>
-            <div class="flex gap-1">
+            <div class="flex flex-wrap gap-1">
                 <template x-for="f in ['all','initial','reply','closing']" :key="f">
                     <button @click="filter = f" class="px-3 py-1.5 rounded-lg text-xs font-medium transition"
                             :class="filter === f ? 'bg-brand-500/20 text-brand-400' : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'"
@@ -96,12 +96,12 @@
     <!-- Create/Edit Modal -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
         <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Template' : 'New Content Template'"></h3>
                 <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <form @submit.prevent="saveTemplate()" class="space-y-4">
-                <div class="grid grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Type *</label>
                         <select x-model="form.template_type" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
@@ -134,7 +134,7 @@
                     <textarea x-model="form.body" rows="6" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white resize-y" required
                               placeholder="<p>@{{greeting}},</p><p>Your email body here...</p><p>@{{signoff}},<br>@{{sender_name}}</p>"></textarea>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Greetings (comma-separated)</label>
                         <input type="text" x-model="greetingsStr" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="Hi, Hello, Hey">
@@ -144,7 +144,7 @@
                         <input type="text" x-model="signoffsStr" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" placeholder="Best, Thanks, Regards">
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Cooldown (minutes)</label>
                         <input type="number" x-model="form.cooldown_minutes" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" min="0">

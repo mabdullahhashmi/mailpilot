@@ -47,7 +47,7 @@
     </div>
 
     <!-- Export Button -->
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <span class="text-zinc-500 text-sm" x-text="senders.length + ' sender mailboxes'"></span>
         <a href="/api/warmup/export/sender-health" class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 transition">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
@@ -87,7 +87,7 @@
                 </div>
 
                 <!-- Quick Stats -->
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
                         <p class="text-sm font-semibold text-white" x-text="s.stats?.total_sent ?? 0"></p>
                         <p class="text-[10px] text-zinc-500 uppercase tracking-wider">Sent 30d</p>
@@ -124,7 +124,7 @@
     <!-- Detail Modal -->
     <div x-show="showDetail" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showDetail = false">
         <div class="w-full max-w-2xl glass rounded-2xl p-6 fade-in max-h-[85vh] overflow-y-auto" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
                     <h3 class="text-white font-semibold text-lg" x-text="detail.email || 'Sender Detail'"></h3>
                     <p class="text-zinc-500 text-xs mt-0.5" x-text="detail.provider_type || 'custom'"></p>

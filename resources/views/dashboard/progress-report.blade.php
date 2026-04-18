@@ -37,12 +37,12 @@
 
         <!-- Report Header -->
         <div class="glass rounded-2xl p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
                     <h2 class="text-white font-bold text-xl" x-text="report?.campaign_name"></h2>
                     <p class="text-zinc-500 text-xs mt-1">Report generated: <span x-text="portalDate(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })"></span></p>
                 </div>
-                <div class="text-right">
+                <div class="sm:text-right">
                     <span class="badge px-3 py-1 rounded-full text-xs"
                           :class="statusColor(report?.status)"
                           x-text="report?.status"></span>

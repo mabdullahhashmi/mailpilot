@@ -31,9 +31,9 @@
     </div>
 
     <!-- Actions -->
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <span class="text-zinc-500 text-sm">DNS authentication and blacklist status for all domains</span>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
             <button @click="checkAllDns()" :disabled="checkingAll" class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium text-white btn-primary">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="checkingAll && 'animate-spin'"></i>
                 <span x-text="checkingAll ? 'Checking...' : 'Check All DNS'"></span>

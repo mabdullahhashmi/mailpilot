@@ -116,7 +116,7 @@
                     <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Name *</label>
                     <input type="text" x-model="form.campaign_name" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Sender Mailbox *</label>
                         <select x-model="form.sender_mailbox_id" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>
@@ -139,7 +139,7 @@
                         </p>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window Start</label>
                         <input type="time" x-model="form.time_window_start" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" value="08:00">
@@ -213,7 +213,7 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3 mb-4 max-w-md">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-md">
                 <div>
                     <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window Start</label>
                     <input type="time" x-model="bulkForm.time_window_start" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">

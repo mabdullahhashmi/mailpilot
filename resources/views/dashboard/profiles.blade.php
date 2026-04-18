@@ -6,7 +6,7 @@
 @section('content')
 <div x-data="profilesPage()" x-init="init()">
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <span class="text-zinc-500 text-sm" x-text="profiles.length + ' profiles'"></span>
         <button @click="showModal = true; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i> New Profile
@@ -51,7 +51,7 @@
                     </template>
                 </div>
 
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div class="text-center p-2 rounded-lg bg-white/[0.03]">
                         <p class="text-sm font-bold text-white" x-text="getTotalDays(p)"></p>
                         <p class="text-[10px] text-zinc-500 uppercase">Days</p>
@@ -80,7 +80,7 @@
     <!-- Detail View Modal -->
     <div x-show="showDetail" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showDetail = false">
         <div class="w-full max-w-2xl max-h-[80vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-lg" x-text="detailProfile?.profile_name + ' — Daily Rules'"></h3>
                 <button @click="showDetail = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
@@ -120,14 +120,14 @@
     <!-- New Profile Modal with Visual Day-Rules Builder -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
         <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Profile' : 'New Warmup Profile'"></h3>
                 <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
             <form @submit.prevent="saveProfile()" class="space-y-6">
                 <!-- Basic Info -->
-                <div class="grid grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Profile Name *</label>
                         <input type="text" x-model="form.profile_name" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required>

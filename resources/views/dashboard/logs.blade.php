@@ -106,7 +106,7 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex items-center justify-between px-5 py-3 border-t border-white/5" x-show="totalPages > 1">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-5 py-3 border-t border-white/5" x-show="totalPages > 1">
             <span class="text-zinc-500 text-xs" x-text="'Page ' + page + ' of ' + totalPages"></span>
             <div class="flex gap-1">
                 <button @click="page = Math.max(1, page - 1); load()" :disabled="page <= 1" class="px-3 py-1.5 rounded-lg text-xs text-zinc-400 bg-white/[0.03] hover:bg-white/[0.06] disabled:opacity-30">Prev</button>

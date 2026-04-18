@@ -620,7 +620,7 @@
                 <p class="text-zinc-400 text-sm" x-text="analysisResult?.reasoning"></p>
 
                 <!-- Metrics Grid -->
-                <div class="grid grid-cols-2 gap-3" x-show="analysisResult?.metrics">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="analysisResult?.metrics">
                     <template x-for="[key, val] in Object.entries(analysisResult?.metrics || {}).filter(([k]) => ['reply_rate','open_rate','bounce_rate','spam_rate','placement_score','reputation_score'].includes(k))" :key="key">
                         <div class="p-3 rounded-xl bg-white/5">
                             <p class="text-zinc-500 text-[11px] uppercase tracking-wider" x-text="key.replace(/_/g, ' ')"></p>

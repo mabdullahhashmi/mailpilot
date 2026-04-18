@@ -56,7 +56,7 @@
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <!-- Activity Chart -->
         <div class="xl:col-span-2 glass rounded-2xl p-6">
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
                     <h3 class="text-white font-semibold text-base">Activity Overview</h3>
                     <p class="text-zinc-500 text-xs mt-0.5">Daily warmup event volume (last 14 days)</p>
@@ -77,7 +77,7 @@
 
         <!-- Readiness Panel -->
         <div class="glass rounded-2xl p-6">
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-base">Sender Readiness</h3>
                 <i data-lucide="shield-check" class="w-4 h-4 text-zinc-500"></i>
             </div>
@@ -113,7 +113,7 @@
         <!-- Weekly Summary -->
         <div class="glass rounded-2xl p-6">
             <h3 class="text-white font-semibold text-base mb-4">This Week</h3>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-center">
                     <p class="text-xl font-bold text-white" x-text="weekly.total_events ?? 0"></p>
                     <p class="text-zinc-500 text-xs mt-1">Total Events</p>
@@ -136,7 +136,7 @@
         <!-- Quick Actions -->
         <div class="glass rounded-2xl p-6">
             <h3 class="text-white font-semibold text-base mb-4">Quick Actions</h3>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <a href="{{ route('dashboard.senders') }}" class="flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-brand-500/30 hover:bg-brand-500/5 transition group">
                     <div class="w-9 h-9 rounded-lg gradient-brand flex items-center justify-center">
                         <i data-lucide="plus" class="w-4 h-4 text-white"></i>

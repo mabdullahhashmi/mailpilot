@@ -118,6 +118,103 @@
             background-color: #4f46e5;
             color: #ffffff;
         }
+
+        @media (max-width: 1023px) {
+            aside.fixed.inset-y-0.left-0.z-40 {
+                width: min(86vw, 20rem);
+            }
+
+            main {
+                overflow-x: hidden;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .stat-card:hover {
+                transform: none;
+            }
+
+            header.sticky {
+                height: auto !important;
+                min-height: 4rem;
+                padding-top: 0.6rem;
+                padding-bottom: 0.6rem;
+                align-items: flex-start;
+                gap: 0.65rem;
+            }
+
+            header.sticky > div:first-child {
+                flex: 1;
+                min-width: 0;
+            }
+
+            header.sticky > div:last-child {
+                width: 100%;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            header.sticky h2 {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 100%;
+            }
+
+            .modal-overlay {
+                align-items: flex-end;
+                padding: 0.75rem !important;
+            }
+
+            .modal-overlay > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                max-height: calc(100vh - 1rem) !important;
+                border-radius: 1rem;
+                padding: 1rem !important;
+            }
+
+            .glass.rounded-2xl.overflow-hidden {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .glass.rounded-2xl.overflow-hidden > table,
+            .glass.rounded-2xl.overflow-hidden table,
+            .overflow-x-auto > table {
+                min-width: 640px;
+            }
+
+            .grid-cols-2,
+            .grid-cols-3,
+            .grid-cols-4,
+            .grid-cols-5,
+            .grid-cols-6 {
+                grid-template-columns: minmax(0, 1fr) !important;
+            }
+
+            [class*="min-w-[200px]"],
+            [class*="min-w-[250px]"] {
+                min-width: 0 !important;
+            }
+
+            select[class*="min-w-[180px]"] {
+                min-width: 0 !important;
+                width: 100%;
+            }
+
+            .truncate {
+                max-width: 100% !important;
+            }
+
+            input,
+            select,
+            textarea,
+            button {
+                font-size: 14px;
+            }
+        }
     </style>
 </head>
 <body class="h-full bg-surface-950 text-zinc-300 font-sans antialiased" x-data="layoutShell()" x-init="init()">

@@ -6,7 +6,7 @@
 @section('content')
 <div x-data="domainsPage()" x-init="init()">
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <span class="text-zinc-500 text-sm" x-text="domains.length + ' domains'"></span>
         <button @click="showModal = true; resetForm()" class="btn-primary px-4 py-2.5 rounded-xl text-white text-sm font-medium flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i> Add Domain
@@ -54,7 +54,7 @@
                 </div>
 
                 <!-- DNS Checks -->
-                <div class="grid grid-cols-4 gap-2 mb-4">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                     <template x-for="check in ['spf','dkim','dmarc','mx']" :key="check">
                         <div class="text-center p-2 rounded-lg bg-white/[0.03]">
                             <div class="w-5 h-5 mx-auto mb-1 rounded-full flex items-center justify-center" :class="getDnsStatus(d, check) === 'valid' ? 'bg-emerald-500/20' : getDnsStatus(d, check) === 'weak' ? 'bg-amber-500/20' : 'bg-red-500/20'">

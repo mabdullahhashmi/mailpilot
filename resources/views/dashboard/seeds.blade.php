@@ -6,9 +6,9 @@
 @section('content')
 <div x-data="seedsPage()" x-init="init()">
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <span class="text-zinc-500 text-sm" x-text="seeds.length + ' seeds'"></span>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
             <button @click="checkAllSeedConnections()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 disabled:opacity-60 disabled:cursor-not-allowed" :disabled="checkingAllConnections">
                 <i data-lucide="shield-check" class="w-4 h-4"></i>
                 <span x-show="!checkingAllConnections">Check All Connections</span>
@@ -191,7 +191,7 @@
     <!-- CSV Import Modal -->
     <div x-show="showImport" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showImport = false">
         <div class="w-full max-w-lg glass rounded-2xl p-6 fade-in" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-lg">Import Seeds from CSV</h3>
                 <button @click="showImport = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
@@ -312,14 +312,14 @@
     <!-- Add/Edit Modal -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay" @click.self="showModal = false">
         <div class="w-full max-w-xl max-h-[90vh] overflow-y-auto glass rounded-2xl p-6 fade-in" @click.stop>
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h3 class="text-white font-semibold text-lg" x-text="editMode ? 'Edit Seed' : 'Add Seed Mailbox'"></h3>
                 <button @click="showModal = false" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <form @submit.prevent="saveSeed()" class="space-y-4">
 
                 <!-- Email + Provider -->
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Email Address *</label>
                         <input type="email" x-model="form.email_address" @change="syncUsername()" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" required :disabled="editMode">
@@ -356,7 +356,7 @@
                         <i data-lucide="send" class="w-3.5 h-3.5"></i> SMTP (Outgoing)
                         <span x-show="form.provider === 'google' || form.provider === 'microsoft'" class="text-[10px] text-emerald-400 font-normal normal-case tracking-normal">Auto-filled</span>
                     </p>
-                    <div class="grid grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="col-span-2">
                             <label class="block text-xs text-zinc-500 mb-1">Host</label>
                             <input type="text" x-model="form.smtp_host" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
@@ -370,7 +370,7 @@
                                    :readonly="form.provider === 'google' || form.provider === 'microsoft'" required>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-zinc-500 mb-1">Username</label>
                             <input type="text" x-model="form.smtp_username" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white" required>
@@ -393,7 +393,7 @@
                         <i data-lucide="inbox" class="w-3.5 h-3.5"></i> IMAP (Incoming — required for opens & replies)
                         <span x-show="form.provider === 'google' || form.provider === 'microsoft'" class="text-[10px] text-emerald-400 font-normal normal-case tracking-normal">Auto-filled</span>
                     </p>
-                    <div class="grid grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="col-span-2">
                             <label class="block text-xs text-zinc-500 mb-1">Host</label>
                             <input type="text" x-model="form.imap_host" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white"
@@ -407,7 +407,7 @@
                                    :readonly="form.provider === 'google' || form.provider === 'microsoft'">
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-zinc-500 mb-1">Username</label>
                             <input type="text" x-model="form.imap_username" class="input-dark w-full px-3 py-2 rounded-lg text-sm text-white">

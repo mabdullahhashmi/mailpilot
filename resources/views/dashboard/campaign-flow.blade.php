@@ -6,7 +6,7 @@
 @section('content')
 <div x-data="campaignFlowTest()" x-init="init()" class="space-y-6">
     <div class="glass rounded-2xl p-5 border border-emerald-500/20">
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
                 <h3 class="text-white font-semibold text-base">Isolated Flow Tester</h3>
                 <p class="text-zinc-400 text-sm mt-1">This module is for controlled testing and does not use the normal daily planner quota path.</p>
@@ -50,7 +50,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5">Phases</label>
                         <select x-model.number="form.phase_count" class="w-full input-dark rounded-lg px-3 py-2 text-sm">

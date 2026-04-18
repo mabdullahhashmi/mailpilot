@@ -8,8 +8,8 @@
 
     <!-- Status Banner -->
     <div class="glass rounded-2xl p-5 mb-6">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-start sm:items-center gap-3 sm:gap-4">
                 <div class="w-12 h-12 rounded-xl flex items-center justify-center" :class="overallOk ? 'gradient-success' : 'gradient-danger'">
                     <i :data-lucide="overallOk ? 'check-circle' : 'alert-circle'" class="w-6 h-6 text-white"></i>
                 </div>
@@ -186,7 +186,7 @@
                 <i data-lucide="calendar" class="w-4 h-4 text-brand-400"></i>
                 <h3 class="text-white font-semibold text-sm">Events Today</h3>
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="text-center p-3 rounded-xl bg-white/[0.03]">
                     <p class="text-xl font-bold text-white" x-text="data.events_today?.total ?? 0"></p>
                     <p class="text-zinc-500 text-[10px] uppercase tracking-wider mt-1">Total</p>
