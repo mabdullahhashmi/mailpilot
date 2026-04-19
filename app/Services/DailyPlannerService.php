@@ -277,20 +277,23 @@ class DailyPlannerService
             $count
         );
 
+        $selectedSeeds = $selectedSeeds->values();
+        $scheduledSlots = $this->buildSpreadScheduleSlots($campaign, $window, $selectedSeeds->count());
+
         if ($selectedSeeds->count() < $count) {
             Log::warning("DailyPlanner: Campaign #{$campaign->id} requested {$count} new thread(s), allocated {$selectedSeeds->count()} due to seed availability/capacity");
         }
 
         $createdCount = 0;
 
-        foreach ($selectedSeeds as $seed) {
+        foreach ($selectedSeeds as $index => $seed) {
             $thread = $this->threadService->createThread(
                 $campaign,
                 $campaign->senderMailbox,
                 $seed
             );
 
-            $scheduledAt = $this->pickScheduledAt($campaign, $window);
+            $scheduledAt = $scheduledSlots[$index] ?? $this->pickScheduledAt($campaign, $window);
 
             $event = \App\Models\WarmupEvent::create([
                 'event_type' => 'sender_send_initial',
@@ -351,9 +354,8 @@ class DailyPlannerService
                 ? $lastMessage->sent_at->addMinutes($delayMinutes)
                 : $this->randomizer->scheduledTime($window['start'], $window['end'], $scheduleTimezone);
 
-            // Ensure within working window
-            $scheduledAt = max($scheduledAt, now());
-            $scheduledAt = $this->clampToAcceleratedWindow($campaign, $scheduledAt, $window);
+            // Ensure continuation replies stay inside campaign working window.
+            $scheduledAt = $this->alignScheduledAtToWorkingWindow($campaign, $scheduledAt, $window, $scheduleTimezone);
 
             \App\Models\WarmupEvent::create([
                 'event_type' => $eventType,
@@ -420,5 +422,137 @@ class DailyPlannerService
         }
 
         return $scheduledAt;
+    }
+
+    private function buildSpreadScheduleSlots(WarmupCampaign $campaign, array $window, int $count): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        if ($this->isAcceleratedMode($campaign)) {
+            $duration = $this->getDayDurationMinutes($campaign);
+            return $this->evenlySpreadBetween(now(), now()->addMinutes($duration), $count);
+        }
+
+        $timezone = $campaign->timezone ?: ($campaign->senderMailbox->timezone ?: 'UTC');
+        $nowTz = now()->setTimezone($timezone);
+
+        [$windowStartAt, $windowEndAt] = $this->resolveWindowBoundsForDate(
+            $nowTz->toDateString(),
+            $window,
+            $timezone
+        );
+
+        if ($windowEndAt->lte($nowTz)) {
+            [$windowStartAt, $windowEndAt] = $this->resolveWindowBoundsForDate(
+                $nowTz->copy()->addDay()->toDateString(),
+                $window,
+                $timezone
+            );
+        }
+
+        if ($windowStartAt->lt($nowTz)) {
+            $windowStartAt = $nowTz->copy()->addSeconds(random_int(5, 45));
+        }
+
+        return $this->evenlySpreadBetween($windowStartAt, $windowEndAt, $count);
+    }
+
+    private function evenlySpreadBetween(Carbon $startAt, Carbon $endAt, int $count): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        $start = $startAt->copy();
+        $end = $endAt->copy();
+
+        if ($end->lte($start)) {
+            return array_map(
+                fn () => $start->copy(),
+                range(1, $count)
+            );
+        }
+
+        $totalSeconds = max(1, $start->diffInSeconds($end));
+        $slotSize = max(1, intdiv($totalSeconds, $count));
+        $slots = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $slotStart = $start->copy()->addSeconds($slotSize * $i);
+            $slotEnd = $i === $count - 1
+                ? $end->copy()
+                : $start->copy()->addSeconds($slotSize * ($i + 1));
+
+            if ($slotEnd->lte($slotStart)) {
+                $slotEnd = $slotStart->copy()->addSeconds(1);
+            }
+
+            $startTs = $slotStart->getTimestamp();
+            $endTs = $slotEnd->getTimestamp();
+            $centerTs = intdiv($startTs + $endTs, 2);
+            $jitterLimit = min(600, max(5, (int) floor(($endTs - $startTs) * 0.35)));
+            $candidateTs = $centerTs + random_int(-$jitterLimit, $jitterLimit);
+
+            $maxTs = max($startTs, $endTs - 1);
+            $candidateTs = max($startTs, min($candidateTs, $maxTs));
+
+            $slots[] = Carbon::createFromTimestamp($candidateTs, $start->getTimezone());
+        }
+
+        return $slots;
+    }
+
+    private function alignScheduledAtToWorkingWindow(
+        WarmupCampaign $campaign,
+        Carbon $scheduledAt,
+        array $window,
+        string $timezone
+    ): Carbon {
+        if ($this->isAcceleratedMode($campaign)) {
+            return $this->clampToAcceleratedWindow($campaign, $scheduledAt, $window);
+        }
+
+        $candidate = $scheduledAt->copy()->setTimezone($timezone);
+        $nowTz = now()->setTimezone($timezone);
+
+        if ($candidate->lt($nowTz)) {
+            $candidate = $nowTz;
+        }
+
+        [$windowStartAt, $windowEndAt] = $this->resolveWindowBoundsForDate(
+            $candidate->toDateString(),
+            $window,
+            $timezone
+        );
+
+        if ($candidate->lt($windowStartAt)) {
+            return $windowStartAt->copy()->addSeconds(random_int(15, 180));
+        }
+
+        if ($candidate->gt($windowEndAt)) {
+            [$nextStartAt] = $this->resolveWindowBoundsForDate(
+                $candidate->copy()->addDay()->toDateString(),
+                $window,
+                $timezone
+            );
+
+            return $nextStartAt->copy()->addSeconds(random_int(30, 240));
+        }
+
+        return $candidate;
+    }
+
+    private function resolveWindowBoundsForDate(string $date, array $window, string $timezone): array
+    {
+        $windowStartAt = Carbon::parse($date . ' ' . $window['start'], $timezone);
+        $windowEndAt = Carbon::parse($date . ' ' . $window['end'], $timezone);
+
+        if ($windowEndAt->lte($windowStartAt)) {
+            $windowEndAt->addDay();
+        }
+
+        return [$windowStartAt, $windowEndAt];
     }
 }

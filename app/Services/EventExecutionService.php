@@ -7,6 +7,7 @@ use App\Models\WarmupEventLog;
 use App\Models\Thread;
 use App\Models\ThreadMessage;
 use App\Models\SendSlot;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
@@ -184,10 +185,12 @@ class EventExecutionService
         $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'seed');
 
         if ($pendingOpen) {
+            $deferredAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(rand(5, 15)));
+
             // Reschedule this reply to run after the open event — set status back to pending
             $event->update([
                 'status' => 'pending',
-                'scheduled_at' => now()->addMinutes(rand(5, 15)),
+                'scheduled_at' => $deferredAt,
                 'lock_token' => null,
                 'lock_expires_at' => null,
             ]);
@@ -259,9 +262,11 @@ class EventExecutionService
         $pendingOpen = $this->hasPendingOpenEvent($thread->id, 'sender');
 
         if ($pendingOpen) {
+            $deferredAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(rand(5, 15)));
+
             $event->update([
                 'status' => 'pending',
-                'scheduled_at' => now()->addMinutes(rand(5, 15)),
+                'scheduled_at' => $deferredAt,
                 'lock_token' => null,
                 'lock_expires_at' => null,
             ]);
@@ -331,9 +336,11 @@ class EventExecutionService
         $imap = $this->connectImap($actorMailbox);
         if (!$imap) {
             if ($attempt <= $maxAttempts) {
+                $deferredAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(2));
+
                 $event->update([
                     'status' => 'pending',
-                    'scheduled_at' => now()->addMinutes(2),
+                    'scheduled_at' => $deferredAt,
                     'payload' => $payload,
                     'lock_token' => null,
                     'lock_expires_at' => null,
@@ -360,9 +367,11 @@ class EventExecutionService
 
             if (!$messageUid) {
                 if ($attempt <= $maxAttempts) {
+                    $deferredAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(2));
+
                     $event->update([
                         'status' => 'pending',
-                        'scheduled_at' => now()->addMinutes(2),
+                        'scheduled_at' => $deferredAt,
                         'payload' => $payload,
                         'lock_token' => null,
                         'lock_expires_at' => null,
@@ -528,12 +537,14 @@ class EventExecutionService
         if (!$thread || $thread->isComplete() || $thread->shouldClose()) {
             // Schedule close event
             if ($thread && $thread->shouldClose() && $thread->thread_status !== 'closed') {
+                $closeAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(rand(1, 5)));
+
                 WarmupEvent::create([
                     'event_type' => 'thread_close',
                     'actor_type' => 'system',
                     'thread_id' => $thread->id,
                     'warmup_campaign_id' => $completedEvent->warmup_campaign_id,
-                    'scheduled_at' => now()->addMinutes(rand(1, 5)),
+                    'scheduled_at' => $closeAt,
                     'status' => 'pending',
                     'priority' => 6,
                 ]);
@@ -547,9 +558,10 @@ class EventExecutionService
         $nextType = $thread->next_actor_type === 'seed' ? 'seed_reply' : 'sender_reply';
         $actorId = $thread->next_actor_type === 'seed' ? $thread->seed_mailbox_id : $thread->sender_mailbox_id;
         $recipientId = $thread->next_actor_type === 'seed' ? $thread->sender_mailbox_id : $thread->seed_mailbox_id;
+        $replyAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes($delayMinutes));
 
         // Maybe schedule auxiliary events (open, star, mark important)
-        $this->maybeScheduleAuxiliaryEvents($thread, $completedEvent, $delayMinutes);
+        $this->maybeScheduleAuxiliaryEvents($thread, $completedEvent, $replyAt, $delayMinutes);
 
         WarmupEvent::create([
             'event_type' => $nextType,
@@ -559,20 +571,31 @@ class EventExecutionService
             'recipient_mailbox_id' => $recipientId,
             'thread_id' => $thread->id,
             'warmup_campaign_id' => $completedEvent->warmup_campaign_id,
-            'scheduled_at' => now()->addMinutes($delayMinutes),
+            'scheduled_at' => $replyAt,
             'status' => 'pending',
             'priority' => 4,
         ]);
     }
 
 
-    private function maybeScheduleAuxiliaryEvents(Thread $thread, WarmupEvent $event, int $replyDelay): void
+    private function maybeScheduleAuxiliaryEvents(Thread $thread, WarmupEvent $event, Carbon $replyAt, int $replyDelay): void
     {
         // Before replies, schedule an "open" event for the upcoming actor.
         if (in_array($thread->next_actor_type, ['seed', 'sender'], true)) {
             $openDelay = max(1, intval($replyDelay * 0.3));
             $openActor = $thread->next_actor_type;
             $openActorId = $openActor === 'seed' ? $thread->seed_mailbox_id : $thread->sender_mailbox_id;
+            $preferredOpenAt = $replyAt->copy()->subMinutes(max(1, min($openDelay, 20)));
+
+            if ($preferredOpenAt->lte(now())) {
+                $preferredOpenAt = now()->addMinutes(1);
+            }
+
+            $openAt = $this->scheduleWithinThreadWindow($thread, $preferredOpenAt);
+
+            if ($openAt->gte($replyAt)) {
+                $openAt = $replyAt->copy()->subMinutes(1);
+            }
 
             WarmupEvent::create([
                 'event_type' => 'seed_open_email',
@@ -580,7 +603,7 @@ class EventExecutionService
                 'actor_mailbox_id' => $openActorId,
                 'thread_id' => $thread->id,
                 'warmup_campaign_id' => $event->warmup_campaign_id,
-                'scheduled_at' => now()->addMinutes($openDelay),
+                'scheduled_at' => $openAt,
                 'status' => 'pending',
                 'priority' => 3,
                 'payload' => ['open_actor' => $openActor],
@@ -588,13 +611,19 @@ class EventExecutionService
 
             // 20% chance to mark important
             if ($thread->next_actor_type === 'seed' && rand(1, 100) <= 20) {
+                $importantAt = $this->scheduleWithinThreadWindow($thread, $openAt->copy()->addMinutes(rand(1, 5)));
+
+                if ($importantAt->gte($replyAt)) {
+                    $importantAt = $replyAt->copy()->subMinutes(1);
+                }
+
                 WarmupEvent::create([
                     'event_type' => 'seed_mark_important',
                     'actor_type' => 'seed',
                     'actor_mailbox_id' => $thread->seed_mailbox_id,
                     'thread_id' => $thread->id,
                     'warmup_campaign_id' => $event->warmup_campaign_id,
-                    'scheduled_at' => now()->addMinutes($openDelay + rand(1, 5)),
+                    'scheduled_at' => $importantAt,
                     'status' => 'pending',
                     'priority' => 7,
                 ]);
@@ -616,6 +645,75 @@ class EventExecutionService
                 }
             })
             ->exists();
+    }
+
+    private function scheduleWithinThreadWindow(Thread $thread, Carbon $preferredAt): Carbon
+    {
+        $campaign = $thread->warmupCampaign;
+        if (!$campaign) {
+            return $preferredAt->lt(now()) ? now() : $preferredAt;
+        }
+
+        $dayDurationMinutes = max(30, min(1440, (int) ($campaign->day_duration_minutes ?? 1440)));
+
+        if ($dayDurationMinutes < 1440) {
+            $startAt = now();
+            $endAt = now()->addMinutes($dayDurationMinutes);
+
+            if ($preferredAt->lt($startAt) || $preferredAt->gt($endAt)) {
+                return $this->randomizer->scheduledTimeBetween($startAt, $endAt);
+            }
+
+            return $preferredAt->copy();
+        }
+
+        $timezone = $campaign->timezone ?: ($thread->senderMailbox?->timezone ?: 'UTC');
+        $candidate = $preferredAt->copy()->setTimezone($timezone);
+        $nowTz = now()->setTimezone($timezone);
+
+        if ($candidate->lt($nowTz)) {
+            $candidate = $nowTz->copy();
+        }
+
+        [$windowStartAt, $windowEndAt] = $this->resolveThreadWindowBounds(
+            $thread,
+            $candidate->toDateString(),
+            $timezone
+        );
+
+        if ($candidate->lt($windowStartAt)) {
+            return $windowStartAt->copy()->addSeconds(random_int(20, 240));
+        }
+
+        if ($candidate->gt($windowEndAt)) {
+            [$nextWindowStartAt] = $this->resolveThreadWindowBounds(
+                $thread,
+                $candidate->copy()->addDay()->toDateString(),
+                $timezone
+            );
+
+            return $nextWindowStartAt->copy()->addSeconds(random_int(30, 300));
+        }
+
+        return $candidate;
+    }
+
+    private function resolveThreadWindowBounds(Thread $thread, string $date, string $timezone): array
+    {
+        $campaign = $thread->warmupCampaign;
+        $sender = $thread->senderMailbox;
+
+        $windowStart = $campaign?->time_window_start ?: ($sender?->working_hours_start ?: '08:00');
+        $windowEnd = $campaign?->time_window_end ?: ($sender?->working_hours_end ?: '22:00');
+
+        $windowStartAt = Carbon::parse($date . ' ' . $windowStart, $timezone);
+        $windowEndAt = Carbon::parse($date . ' ' . $windowEnd, $timezone);
+
+        if ($windowEndAt->lte($windowStartAt)) {
+            $windowEndAt->addDay();
+        }
+
+        return [$windowStartAt, $windowEndAt];
     }
 
     private function resolveThreadSubject(Thread $thread, ?string $fallback = null): string
