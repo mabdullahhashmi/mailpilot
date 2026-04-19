@@ -74,11 +74,11 @@
                     <template x-if="(c.failed_tasks_total || 0) > 0 && c.latest_failed_task">
                         <div class="mt-2">
                             <p class="text-[11px] text-red-200/90">
-                                <span class="font-medium" x-text="formatEventType(c.latest_failed_task.event_type)"></span>
+                                <span class="font-medium" x-text="c.latest_failed_task.friendly_title || formatEventType(c.latest_failed_task.event_type)"></span>
                                 <span class="text-red-300/70"> | </span>
                                 <span x-text="formatRelativeTime(c.latest_failed_task.failed_at)"></span>
                             </p>
-                            <p class="text-[10px] text-red-100/80 truncate mt-1" :title="c.latest_failed_task.failure_reason || ''" x-text="c.latest_failed_task.failure_reason || 'No reason provided'"></p>
+                            <p class="text-[10px] text-red-100/80 truncate mt-1" :title="c.latest_failed_task.failure_reason || ''" x-text="c.latest_failed_task.friendly_reason || 'No reason provided'"></p>
                         </div>
                     </template>
 

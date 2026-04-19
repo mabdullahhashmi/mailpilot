@@ -60,6 +60,10 @@ class WarmupCampaignController extends Controller
         $campaigns->transform(function ($campaign) use ($failedCounts, $latestFailedByCampaign) {
             $failedTotal = (int) ($failedCounts[$campaign->id] ?? 0);
             $latestFailed = $latestFailedByCampaign[$campaign->id] ?? null;
+            $friendlyFailure = $this->friendlyFailureReason(
+                $latestFailed?->failure_reason,
+                $latestFailed?->event_type
+            );
 
             $campaign->setAttribute('failed_tasks_total', $failedTotal);
             $campaign->setAttribute('latest_failed_task', $latestFailed ? [
@@ -67,6 +71,8 @@ class WarmupCampaignController extends Controller
                 'event_type' => $latestFailed->event_type,
                 'status' => $latestFailed->status,
                 'failure_reason' => $latestFailed->failure_reason,
+                'friendly_title' => $friendlyFailure['title'],
+                'friendly_reason' => $friendlyFailure['reason'],
                 'failed_at' => $latestFailed->updated_at?->toIso8601String(),
             ] : null);
 
@@ -470,5 +476,74 @@ class WarmupCampaignController extends Controller
             })
             ->values()
             ->toArray();
+    }
+
+    private function friendlyFailureReason(?string $failureReason, ?string $eventType): array
+    {
+        $raw = trim((string) $failureReason);
+        $normalized = strtolower($raw);
+
+        if ($raw === '') {
+            return [
+                'title' => 'Task failed',
+                'reason' => 'This task failed, but no detailed reason was saved.',
+            ];
+        }
+
+        if (str_contains($normalized, 'message not found after 3 checks')) {
+            return [
+                'title' => 'Email not found',
+                'reason' => 'The system could not find the expected email in the mailbox after 3 checks.',
+            ];
+        }
+
+        if (str_contains($normalized, 'imap unavailable after 3 checks')) {
+            return [
+                'title' => 'Mailbox connection issue',
+                'reason' => 'The mailbox (IMAP) was not reachable after 3 checks.',
+            ];
+        }
+
+        if (
+            str_contains($normalized, 'failed to authenticate on smtp server') ||
+            str_contains($normalized, 'authenticationfailed') ||
+            str_contains($normalized, 'username and password not accepted') ||
+            str_contains($normalized, 'badcredentials')
+        ) {
+            return [
+                'title' => 'Login failed',
+                'reason' => 'Mailbox login failed. SMTP/IMAP credentials or app password may be incorrect.',
+            ];
+        }
+
+        if (str_contains($normalized, 'modelnotfoundexception') && str_contains($normalized, 'app\\models\\thread')) {
+            return [
+                'title' => 'Conversation missing',
+                'reason' => 'The related email conversation could not be found, so this task could not continue.',
+            ];
+        }
+
+        if (str_contains($normalized, 'data truncated for column') && str_contains($normalized, 'outcome')) {
+            return [
+                'title' => 'Failure logging issue',
+                'reason' => 'This task failed, and the system also hit a logging format issue while saving failure details.',
+            ];
+        }
+
+        if (str_contains($normalized, 'contentguardservice::recordusage')) {
+            return [
+                'title' => 'Internal content check error',
+                'reason' => 'A reply-content validation step failed due to an internal mismatch.',
+            ];
+        }
+
+        $fallbackTitle = $eventType
+            ? str_replace('_', ' ', ucfirst((string) $eventType)) . ' failed'
+            : 'Task failed';
+
+        return [
+            'title' => $fallbackTitle,
+            'reason' => 'This task failed due to a technical error. Open campaign detail to see full diagnostics.',
+        ];
     }
 }
