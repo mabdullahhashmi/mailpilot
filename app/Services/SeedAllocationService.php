@@ -12,6 +12,9 @@ use Illuminate\Support\Collection;
 
 class SeedAllocationService
 {
+    private const PREFERRED_UNIQUE_SEEDS_PER_DOMAIN = 1;
+    private const MAX_UNIQUE_SEEDS_PER_DOMAIN = 2;
+
     /**
      * Get eligible seeds for a sender+domain, respecting:
      * - No same domain (sender and seed must differ)
@@ -209,8 +212,9 @@ class SeedAllocationService
 
         // Rank by recency/usage and then pick with provider diversity.
         $ranked = $this->rankSeedsForSender($sender, $allocationPool);
-        $remainingCapacity = $this->buildRemainingDailyCapacity($ranked);
-        $byProvider = $ranked
+        $domainConstrainedRanked = $this->applyDomainSeedDiversity($ranked);
+        $remainingCapacity = $this->buildRemainingDailyCapacity($domainConstrainedRanked);
+        $byProvider = $domainConstrainedRanked
             ->groupBy(fn (SeedMailbox $seed) => $seed->provider_type ?: 'other')
             ->map(fn (Collection $group) => $group->values());
 
@@ -249,7 +253,7 @@ class SeedAllocationService
         // If unique seeds are fewer than requested, reuse ranked seeds in a balanced way
         // so profile targets can still be met while respecting each seed's daily cap.
         if ($selected->count() < $count) {
-            $selected = $this->topUpWithRepeatSeeds($selected, $ranked, $remainingCapacity, $count);
+            $selected = $this->topUpWithRepeatSeeds($selected, $domainConstrainedRanked, $remainingCapacity, $count);
         }
 
         $selected = $selected->values();
@@ -301,6 +305,61 @@ class SeedAllocationService
         }
 
         return $remaining;
+    }
+
+    /**
+     * Prefer one unique seed per seed-domain first, then allow a second unique seed
+     * per domain if needed. This keeps domain diversity natural and bounded.
+     */
+    private function applyDomainSeedDiversity(Collection $ranked): Collection
+    {
+        if ($ranked->isEmpty()) {
+            return $ranked;
+        }
+
+        $selected = collect();
+        $selectedIds = [];
+
+        for ($passLimit = self::PREFERRED_UNIQUE_SEEDS_PER_DOMAIN; $passLimit <= self::MAX_UNIQUE_SEEDS_PER_DOMAIN; $passLimit++) {
+            $perDomainCounts = [];
+
+            foreach ($selected as $alreadySelected) {
+                $domain = $this->extractSeedDomainKey($alreadySelected);
+                $perDomainCounts[$domain] = ($perDomainCounts[$domain] ?? 0) + 1;
+            }
+
+            foreach ($ranked as $seed) {
+                if (isset($selectedIds[$seed->id])) {
+                    continue;
+                }
+
+                $domain = $this->extractSeedDomainKey($seed);
+                $domainCount = (int) ($perDomainCounts[$domain] ?? 0);
+
+                if ($domainCount >= $passLimit || $domainCount >= self::MAX_UNIQUE_SEEDS_PER_DOMAIN) {
+                    continue;
+                }
+
+                $selected->push($seed);
+                $selectedIds[$seed->id] = true;
+                $perDomainCounts[$domain] = $domainCount + 1;
+            }
+        }
+
+        return $selected->values();
+    }
+
+    private function extractSeedDomainKey(SeedMailbox $seed): string
+    {
+        $email = strtolower(trim((string) $seed->email_address));
+
+        if ($email === '' || !str_contains($email, '@')) {
+            return 'seed-' . (string) $seed->id;
+        }
+
+        $domain = trim((string) substr(strrchr($email, '@') ?: '', 1));
+
+        return $domain !== '' ? $domain : 'seed-' . (string) $seed->id;
     }
 
     private function topUpWithRepeatSeeds(Collection $selected, Collection $ranked, array &$remainingCapacity, int $count): Collection
