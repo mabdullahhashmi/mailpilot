@@ -327,6 +327,26 @@
                     </div>
                 </div>
 
+                <div x-show="failedScheduleEvents().length > 0" class="glass rounded-xl p-3 mb-5 border border-red-500/20 bg-red-500/5">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <p class="text-[11px] uppercase tracking-wider font-semibold text-red-300">Failed Tasks Brief</p>
+                        <p class="text-[11px] text-red-300" x-text="failedScheduleEvents().length + ' total'"></p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <template x-for="ev in failedScheduleEvents().slice(0, 3)" :key="'brief-' + ev.id">
+                            <div class="rounded-lg bg-white/[0.02] border border-white/[0.05] px-2.5 py-2">
+                                <p class="text-[11px] text-red-200 font-medium" x-text="formatEventType(ev.event_type)"></p>
+                                <p class="text-[10px] text-zinc-400 mt-0.5" x-text="briefFailureText(ev.failure_reason, ev.event_type)"></p>
+                            </div>
+                        </template>
+
+                        <p x-show="failedScheduleEvents().length > 3" class="text-[10px] text-zinc-500">
+                            +<span x-text="failedScheduleEvents().length - 3"></span> more failed task(s) in this schedule.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- Timeline list -->
                 <div class="glass rounded-2xl overflow-hidden">
                     <template x-for="(ev, idx) in scheduleEvents" :key="ev.id">
@@ -357,7 +377,7 @@
                                     <span class="text-zinc-500 text-xs" x-text="ev.sender_email ? (ev.sender_email + ' → ' + (ev.seed_email || '—')) : '—'"></span>
                                 </div>
                                 <p class="text-zinc-600 text-[10px] truncate mt-0.5" x-show="ev.subject" x-text="'Subject: ' + ev.subject"></p>
-                                <p class="text-red-400/70 text-[10px] truncate mt-0.5" x-show="ev.failure_reason" x-text="ev.failure_reason"></p>
+                                <p class="text-red-400/70 text-[10px] truncate mt-0.5" x-show="ev.failure_reason" :title="ev.failure_reason" x-text="briefFailureText(ev.failure_reason, ev.event_type)"></p>
                             </div>
 
                             <!-- Time + Countdown -->
@@ -698,6 +718,43 @@ function campaignDetail() {
             if (h > 0) return { text: `in ${h}h ${m}m ${s}s`, isPast: false };
             if (m > 0) return { text: `in ${m}m ${s}s`, isPast: false };
             return { text: `in ${s}s`, isPast: false };
+        },
+
+        failedScheduleEvents() {
+            return (this.scheduleEvents || []).filter(ev => ev.status === 'failed' || ev.status === 'final_failed');
+        },
+
+        briefFailureText(reason, eventType) {
+            const raw = (reason || '').trim();
+            if (!raw) return 'Task failed, but no detailed reason was saved.';
+
+            const text = raw.toLowerCase();
+
+            if (text.includes('message not found after 3 checks')) {
+                return 'System could not find this email in mailbox after 3 checks.';
+            }
+            if (text.includes('imap unavailable after 3 checks')) {
+                return 'Mailbox connection was unavailable after 3 checks.';
+            }
+            if (
+                text.includes('failed to authenticate on smtp server') ||
+                text.includes('authenticationfailed') ||
+                text.includes('username and password not accepted') ||
+                text.includes('badcredentials')
+            ) {
+                return 'Mailbox login failed. Check SMTP/IMAP credentials or app password.';
+            }
+            if (text.includes('modelnotfoundexception') && text.includes('app\\models\\thread')) {
+                return 'Related conversation thread was not found, so task could not continue.';
+            }
+            if (text.includes('data truncated for column') && text.includes('outcome')) {
+                return 'Task failed, and system also had a failure-log format issue.';
+            }
+            if (text.includes('contentguardservice::recordusage')) {
+                return 'Internal reply-content validation failed due to a system mismatch.';
+            }
+
+            return `Task ${String(eventType || '').replace(/_/g, ' ')} failed due to a technical issue.`;
         },
 
         formatEventType(type) {
