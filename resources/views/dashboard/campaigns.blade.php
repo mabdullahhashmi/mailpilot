@@ -64,6 +64,29 @@
                     </div>
                 </div>
 
+                <!-- Failed Task Summary -->
+                <div class="mb-4 p-3 rounded-xl border" :class="(c.failed_tasks_total || 0) > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/25 bg-emerald-500/10'">
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider" :class="(c.failed_tasks_total || 0) > 0 ? 'text-red-300' : 'text-emerald-300'">Failed Tasks</p>
+                        <p class="text-xs font-semibold" :class="(c.failed_tasks_total || 0) > 0 ? 'text-red-300' : 'text-emerald-300'" x-text="(c.failed_tasks_total || 0) + ' total'"></p>
+                    </div>
+
+                    <template x-if="(c.failed_tasks_total || 0) > 0 && c.latest_failed_task">
+                        <div class="mt-2">
+                            <p class="text-[11px] text-red-200/90">
+                                <span class="font-medium" x-text="formatEventType(c.latest_failed_task.event_type)"></span>
+                                <span class="text-red-300/70"> | </span>
+                                <span x-text="formatRelativeTime(c.latest_failed_task.failed_at)"></span>
+                            </p>
+                            <p class="text-[10px] text-red-100/80 truncate mt-1" :title="c.latest_failed_task.failure_reason || ''" x-text="c.latest_failed_task.failure_reason || 'No reason provided'"></p>
+                        </div>
+                    </template>
+
+                    <template x-if="(c.failed_tasks_total || 0) === 0">
+                        <p class="text-[11px] text-emerald-200/90 mt-2">No failed tasks recorded.</p>
+                    </template>
+                </div>
+
                 <!-- Actions -->
                 <div class="flex gap-2">
                     <template x-if="c.status === 'draft' || c.status === 'stopped'">
@@ -385,6 +408,23 @@ function campaignsPage() {
         statusGradient(s) { return { active: 'gradient-success', paused: 'gradient-warning', draft: 'bg-zinc-700', stopped: 'bg-red-900/50', completed: 'gradient-brand' }[s] || 'bg-zinc-700'; },
         statusBadge(s) { return { active: 'bg-emerald-500/15 text-emerald-400', paused: 'bg-amber-500/15 text-amber-400', draft: 'bg-zinc-500/15 text-zinc-400', stopped: 'bg-red-500/15 text-red-400', completed: 'bg-brand-500/15 text-brand-400' }[s] || 'bg-zinc-500/15 text-zinc-400'; },
         formatStage(stage) { if (!stage) return '—'; return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); },
+        formatEventType(eventType) {
+            if (!eventType) return 'Unknown task';
+            return eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        },
+        formatRelativeTime(iso) {
+            if (!iso) return 'Unknown time';
+            const ts = new Date(iso);
+            if (Number.isNaN(ts.getTime())) return 'Unknown time';
+            const seconds = Math.floor((Date.now() - ts.getTime()) / 1000);
+            if (seconds < 60) return 'just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
+        },
         async saveCampaign() {
             try { await apiCall('/api/warmup/campaigns', 'POST', this.form); showToast('Campaign created'); this.showModal = false; await this.init(); }
             catch(e) { showToast('Error: ' + e.message, 'error'); }

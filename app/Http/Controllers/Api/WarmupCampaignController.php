@@ -30,6 +30,49 @@ class WarmupCampaignController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        if ($campaigns->isEmpty()) {
+            return response()->json($campaigns);
+        }
+
+        $campaignIds = $campaigns->pluck('id');
+
+        $failedCounts = \App\Models\WarmupEvent::whereIn('warmup_campaign_id', $campaignIds)
+            ->whereIn('status', ['failed', 'final_failed'])
+            ->selectRaw('warmup_campaign_id, COUNT(*) as failed_total')
+            ->groupBy('warmup_campaign_id')
+            ->pluck('failed_total', 'warmup_campaign_id');
+
+        $latestFailedByCampaign = \App\Models\WarmupEvent::whereIn('warmup_campaign_id', $campaignIds)
+            ->whereIn('status', ['failed', 'final_failed'])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get([
+                'id',
+                'warmup_campaign_id',
+                'event_type',
+                'status',
+                'failure_reason',
+                'updated_at',
+            ])
+            ->groupBy('warmup_campaign_id')
+            ->map(fn ($items) => $items->first());
+
+        $campaigns->transform(function ($campaign) use ($failedCounts, $latestFailedByCampaign) {
+            $failedTotal = (int) ($failedCounts[$campaign->id] ?? 0);
+            $latestFailed = $latestFailedByCampaign[$campaign->id] ?? null;
+
+            $campaign->setAttribute('failed_tasks_total', $failedTotal);
+            $campaign->setAttribute('latest_failed_task', $latestFailed ? [
+                'id' => $latestFailed->id,
+                'event_type' => $latestFailed->event_type,
+                'status' => $latestFailed->status,
+                'failure_reason' => $latestFailed->failure_reason,
+                'failed_at' => $latestFailed->updated_at?->toIso8601String(),
+            ] : null);
+
+            return $campaign;
+        });
+
         return response()->json($campaigns);
     }
 
