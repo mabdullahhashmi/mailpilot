@@ -51,6 +51,15 @@ class DailyPlannerService
             }
         }
 
+        // Strict day-boundary policy: prevent old pending events from spilling into a new plan day.
+        $staleCleanup = $this->cancelStalePendingEvents($campaign);
+        if (($staleCleanup['events_cancelled'] ?? 0) > 0) {
+            Log::warning("DailyPlanner: Campaign #{$campaign->id} cancelled {$staleCleanup['events_cancelled']} stale pending event(s) from previous day(s)", [
+                'campaign_id' => $campaign->id,
+                'slots_skipped' => $staleCleanup['slots_skipped'] ?? 0,
+            ]);
+        }
+
         // Get rules for today from profile
         $dayRules = $profile->getRulesForDay($day);
         $maxNewThreads = $dayRules['max_new_threads'];
@@ -113,6 +122,8 @@ class DailyPlannerService
             'notes' => [
                 'continuation_threads' => $continuationThreads->count(),
                 'domain_budget_remaining' => $domainBudget,
+                'stale_events_cancelled' => $staleCleanup['events_cancelled'] ?? 0,
+                'stale_slots_skipped' => $staleCleanup['slots_skipped'] ?? 0,
             ],
         ]);
 
@@ -245,6 +256,40 @@ class DailyPlannerService
 
         // Allow one step above planned duration so maintenance transition can happen.
         return max(1, min($planned + 1, $target));
+    }
+
+    private function cancelStalePendingEvents(WarmupCampaign $campaign): array
+    {
+        $skipReason = 'Auto-cancelled stale pending task from previous day plan.';
+
+        $staleEventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
+            ->whereIn('status', ['pending', 'locked', 'executing'])
+            ->whereDate('created_at', '<', today())
+            ->pluck('id');
+
+        if ($staleEventIds->isEmpty()) {
+            return ['events_cancelled' => 0, 'slots_skipped' => 0];
+        }
+
+        $eventsCancelled = \App\Models\WarmupEvent::whereIn('id', $staleEventIds)
+            ->update([
+                'status' => 'cancelled',
+                'failure_reason' => $skipReason,
+                'lock_token' => null,
+                'lock_expires_at' => null,
+            ]);
+
+        $slotsSkipped = \App\Models\SendSlot::whereIn('warmup_event_id', $staleEventIds)
+            ->whereIn('status', ['planned', 'executing'])
+            ->update([
+                'status' => 'skipped',
+                'skip_reason' => $skipReason,
+            ]);
+
+        return [
+            'events_cancelled' => (int) $eventsCancelled,
+            'slots_skipped' => (int) $slotsSkipped,
+        ];
     }
 
     private function advanceCampaignToDay(WarmupCampaign $campaign, int $targetDay): void
