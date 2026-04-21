@@ -298,7 +298,9 @@ Schedule::call(function () {
 Schedule::call(function () {
     $diagnostic = app(\App\Services\SystemDiagnosticService::class);
     try {
-        $results = app(\App\Services\SendingStrategyService::class)->analyzeAll(true);
+        // Auto-apply is disabled: the optimizer logs recommendations only.
+        // Sender daily_send_cap values are managed manually via profiles.
+        $results = app(\App\Services\SendingStrategyService::class)->analyzeAll(false);
         Log::info("[Strategy] Analyzed: {$results['analyzed']}, Ramp: {$results['ramp_up']}, Slow: {$results['slow_down']}, Pause: {$results['pause']}");
         $diagnostic->recordHeartbeat('warmup:strategy-optimizer', true, null, 1440);
     } catch (\Throwable $e) {

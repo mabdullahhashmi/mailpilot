@@ -12,8 +12,12 @@ use Illuminate\Support\Collection;
 
 class SeedAllocationService
 {
-    private const PREFERRED_UNIQUE_SEEDS_PER_DOMAIN = 1;
-    private const MAX_UNIQUE_SEEDS_PER_DOMAIN = 2;
+    // Allow up to 10 seeds from the same provider domain per daily plan.
+    // With fewer seeds than this in the pool, the round-robin provider
+    // diversity in allocateSeeds() already provides natural distribution.
+    // The old cap of 2 caused thread starvation when all seeds were Gmail.
+    private const PREFERRED_UNIQUE_SEEDS_PER_DOMAIN = 3;
+    private const MAX_UNIQUE_SEEDS_PER_DOMAIN = 10;
 
     /**
      * Get eligible seeds for a sender+domain, respecting:

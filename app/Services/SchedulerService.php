@@ -51,12 +51,18 @@ class SchedulerService
         $batchSize = max(1, $batchSize);
         $maxBatches = max(1, $maxBatches);
         $globalGapSeconds = $this->resolveGlobalGapSeconds();
-        $nextGlobalExecutionAt = $this->resolveNextGlobalExecutionAt($globalGapSeconds);
+
+        // Per-sender gap tracking (in-memory for this scheduler run).
+        // Each sender mailbox gets its own independent gap so campaigns
+        // never block each other — only same-sender sends are rate-limited.
+        // Key: actor_mailbox_id (int) => Carbon|null last executed timestamp.
+        $senderLastExecuted = [];
 
         while ($batchesRun < $maxBatches) {
             $batchesRun++;
 
-            // Fetch due events ordered by priority and scheduled time
+            // Fetch due events ordered by priority and scheduled time.
+            // Each campaign's events retain their DailyPlanner-computed spread times.
             $dueEvents = WarmupEvent::where('status', 'pending')
                 ->where('scheduled_at', '<=', now())
                 ->orderBy('priority', 'asc')
@@ -71,22 +77,21 @@ class SchedulerService
             $dueFound += $dueEvents->count();
 
             foreach ($dueEvents as $event) {
-                if (now()->lt($nextGlobalExecutionAt)) {
-                    $event->update([
-                        'scheduled_at' => $nextGlobalExecutionAt,
-                        'lock_token' => null,
-                        'lock_expires_at' => null,
-                    ]);
+                $senderId = (int) $event->actor_mailbox_id;
 
-                    $slot = \App\Models\SendSlot::where('warmup_event_id', $event->id)->first();
-                    if ($slot) {
-                        $slot->update([
-                            'planned_at' => $nextGlobalExecutionAt,
-                            'slot_date' => $nextGlobalExecutionAt->format('Y-m-d'),
-                        ]);
-                    }
+                // Lazy-load: resolve the last execution time for this specific sender.
+                // This is done once per sender per scheduler run.
+                if (!array_key_exists($senderId, $senderLastExecuted)) {
+                    $senderLastExecuted[$senderId] = $this->resolveLastSenderExecutionAt($senderId);
+                }
 
-                    $nextGlobalExecutionAt = $nextGlobalExecutionAt->copy()->addSeconds($globalGapSeconds);
+                $lastAt = $senderLastExecuted[$senderId];
+
+                // Per-sender minimum gap enforcement.
+                // If this sender fired too recently, skip (do NOT reschedule — the
+                // DailyPlanner already computed the correct scheduled_at spread).
+                // The event will be picked up in the next scheduler tick (2 min).
+                if ($lastAt !== null && $lastAt->copy()->addSeconds($globalGapSeconds)->gt(now())) {
                     $skipped++;
                     continue;
                 }
@@ -106,6 +111,10 @@ class SchedulerService
                     $event->update(['status' => 'executing']);
                     $this->executor->execute($event);
                     $succeeded++;
+
+                    // Update in-memory tracking so the next event from the same
+                    // sender waits for the gap — but other senders are unaffected.
+                    $senderLastExecuted[$senderId] = now();
                 } catch (\Throwable $e) {
                     Log::error("Scheduler: Event #{$event->id} ({$event->event_type}) failed: " . get_class($e) . ': ' . $e->getMessage(), [
                         'event_id' => $event->id,
@@ -141,9 +150,6 @@ class SchedulerService
                     }
 
                     $failed++;
-                } finally {
-                    $base = now()->gt($nextGlobalExecutionAt) ? now() : $nextGlobalExecutionAt;
-                    $nextGlobalExecutionAt = $base->copy()->addSeconds($globalGapSeconds);
                 }
             }
 
@@ -215,17 +221,18 @@ class SchedulerService
         return max(30, min(3600, $configured));
     }
 
-    private function resolveNextGlobalExecutionAt(int $gapSeconds)
+    /**
+     * Resolve the last execution timestamp for a specific sender mailbox.
+     * Used for per-sender gap enforcement so different campaigns / senders
+     * run on fully independent schedules without blocking each other.
+     */
+    private function resolveLastSenderExecutionAt(int $senderMailboxId): ?\Carbon\Carbon
     {
-        $lastExecutedAt = WarmupEvent::whereNotNull('executed_at')
+        $lastExecutedAt = WarmupEvent::where('actor_mailbox_id', $senderMailboxId)
+            ->whereNotNull('executed_at')
             ->orderByDesc('executed_at')
             ->value('executed_at');
 
-        if (!$lastExecutedAt) {
-            return now();
-        }
-
-        $nextAt = \Carbon\Carbon::parse($lastExecutedAt)->addSeconds($gapSeconds);
-        return $nextAt->lt(now()) ? now() : $nextAt;
+        return $lastExecutedAt ? \Carbon\Carbon::parse($lastExecutedAt) : null;
     }
 }

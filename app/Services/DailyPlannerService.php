@@ -526,8 +526,10 @@ class DailyPlannerService
     {
         $count = max(1, $count);
 
-        // Target roughly 30 minutes between same-campaign initial sends when possible.
-        return max(3600, ($count - 1) * 1800);
+        // Require at least 20 minutes between same-campaign initial sends.
+        // Using 30 minutes (1800s) was too aggressive and caused the planner
+        // to defer entire day plans to the next window when run mid-day.
+        return max(900, ($count - 1) * 1200);
     }
 
     private function stochasticSpreadBetween(Carbon $startAt, Carbon $endAt, int $count): array

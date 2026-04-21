@@ -19,9 +19,11 @@ class SafetyService
      */
     public function applySenderCap(SenderMailbox $sender, int $requested, string $actionType): int
     {
+        // Default cap of 20 ensures profiles with high Day-1 targets aren't silently
+        // throttled. Users should set daily_send_cap explicitly on the mailbox.
         $cap = $actionType === 'send'
-            ? ($sender->daily_send_cap ?: 5)
-            : (($sender->daily_send_cap ?: 5) * 2); // replies can be double sends
+            ? ($sender->daily_send_cap ?: 20)
+            : (($sender->daily_send_cap ?: 20) * 2); // replies can be double sends
 
         $used = WarmupEvent::where('actor_mailbox_id', $sender->id)
             ->where('actor_type', 'sender')
@@ -238,7 +240,7 @@ class SafetyService
      */
     public function getRampDownCap(SenderMailbox $sender): int
     {
-        $baseCap = $sender->daily_send_cap ?: 5;
+        $baseCap = $sender->daily_send_cap ?: 20;
 
         if (!$sender->ramp_down_active) {
             return $baseCap;
