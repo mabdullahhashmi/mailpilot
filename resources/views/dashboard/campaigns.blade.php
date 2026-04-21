@@ -186,13 +186,8 @@
                         <input type="time" x-model="form.time_window_end" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" value="22:00">
                     </div>
                 </div>
-                <div>
-                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Timezone</label>
-                    <select x-model="form.timezone" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
-                        <template x-for="tz in timezoneOptions" :key="tz.value || 'sender-default'">
-                            <option :value="tz.value" x-text="tz.label"></option>
-                        </template>
-                    </select>
+                <div x-show="false">
+                    <input type="hidden" x-model="form.timezone">
                 </div>
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="showModal = false" class="px-4 py-2.5 rounded-xl text-sm text-zinc-400 btn-ghost">Cancel</button>
@@ -261,13 +256,8 @@
                 </div>
             </div>
 
-            <div class="mb-4 max-w-md">
-                <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Campaign Timezone</label>
-                <select x-model="bulkForm.timezone" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
-                    <template x-for="tz in timezoneOptions" :key="'bulk-' + (tz.value || 'sender-default')">
-                        <option :value="tz.value" x-text="tz.label"></option>
-                    </template>
-                </select>
+            <div class="mb-4 max-w-md" x-show="false">
+                <input type="hidden" x-model="bulkForm.timezone">
             </div>
 
             <div class="flex items-center gap-2 mb-3">
@@ -388,14 +378,14 @@ function campaignsPage() {
         hasShortTestProfile() {
             return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
-        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: '' }; },
+        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; },
         resetBulkForm() {
             this.bulkForm = {
                 campaign_name_prefix: '',
                 warmup_profile_id: '',
                 time_window_start: '08:00',
                 time_window_end: '22:00',
-                timezone: '',
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 skip_existing_active: true,
                 sender_mailbox_ids: [],
             };
