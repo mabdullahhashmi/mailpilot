@@ -311,18 +311,26 @@ class WarmupCampaignController extends Controller
         $selectedDate = $request->query('date');
         $date = $selectedDate ? \Carbon\Carbon::parse($selectedDate)->toDateString() : today()->toDateString();
 
-        $events = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
-            ->whereDate('scheduled_at', $date)
-            ->orderBy('scheduled_at')
-            ->with(['thread.senderMailbox', 'thread.seedMailbox'])
-            ->get();
+        $run = \App\Models\PlannerRun::where('warmup_campaign_id', $campaign->id)
+            ->whereDate('plan_date', $date)
+            ->first();
 
-        $plannerRunIds = $events
-            ->pluck('payload')
-            ->filter(fn($p) => is_array($p) && isset($p['planner_run_id']))
-            ->map(fn($p) => (int) $p['planner_run_id'])
-            ->unique()
-            ->values();
+        $query = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
+            ->with(['thread.senderMailbox', 'thread.seedMailbox']);
+
+        if ($run) {
+            $query->where('payload->planner_run_id', $run->id);
+        } else {
+            $query->whereDate('scheduled_at', $date);
+        }
+
+        $events = $query->orderBy('scheduled_at')->get();
+
+        $plannerRunIds = collect($run ? [$run->id] : [])->merge(
+            $events->pluck('payload')
+                ->filter(fn($p) => is_array($p) && isset($p['planner_run_id']))
+                ->map(fn($p) => (int) $p['planner_run_id'])
+        )->unique()->values();
 
         $runsById = PlannerRun::whereIn('id', $plannerRunIds)->get()->keyBy('id');
 
@@ -373,7 +381,15 @@ class WarmupCampaignController extends Controller
             ->orderByDesc('id');
 
         if ($selectedDate) {
-            $query->whereDate('scheduled_at', \Carbon\Carbon::parse($selectedDate)->toDateString());
+            $run = \App\Models\PlannerRun::where('warmup_campaign_id', $campaign->id)
+                ->whereDate('plan_date', \Carbon\Carbon::parse($selectedDate)->toDateString())
+                ->first();
+
+            if ($run) {
+                $query->where('payload->planner_run_id', $run->id);
+            } else {
+                $query->whereDate('scheduled_at', \Carbon\Carbon::parse($selectedDate)->toDateString());
+            }
         }
 
         $events = $query->limit(1000)->get()->map(function ($event) {
