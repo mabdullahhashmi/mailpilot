@@ -501,7 +501,109 @@ class DailyPlannerService
             $windowStartAt = $nowTz->copy()->addSeconds(random_int(5, 45));
         }
 
-        return $this->evenlySpreadBetween($windowStartAt, $windowEndAt, $count);
+        $remainingSeconds = max(0, $windowEndAt->getTimestamp() - $windowStartAt->getTimestamp());
+        $minimumSpanSeconds = $this->minimumSpanSecondsForCount($count);
+
+        // If planner runs too late in the day, avoid compressing all sends into a short tail window.
+        if ($remainingSeconds < $minimumSpanSeconds) {
+            [$windowStartAt, $windowEndAt] = $this->resolveWindowBoundsForDate(
+                $windowStartAt->copy()->addDay()->toDateString(),
+                $window,
+                $timezone
+            );
+
+            Log::warning("DailyPlanner: Campaign #{$campaign->id} remaining window too short ({$remainingSeconds}s) for {$count} event(s); shifted scheduling to next window", [
+                'campaign_id' => $campaign->id,
+                'remaining_seconds' => $remainingSeconds,
+                'minimum_required_seconds' => $minimumSpanSeconds,
+            ]);
+        }
+
+        return $this->stochasticSpreadBetween($windowStartAt, $windowEndAt, $count);
+    }
+
+    private function minimumSpanSecondsForCount(int $count): int
+    {
+        $count = max(1, $count);
+
+        // Target roughly 30 minutes between same-campaign initial sends when possible.
+        return max(3600, ($count - 1) * 1800);
+    }
+
+    private function stochasticSpreadBetween(Carbon $startAt, Carbon $endAt, int $count): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        $start = $startAt->copy();
+        $end = $endAt->copy();
+
+        if ($end->lte($start)) {
+            return array_map(
+                fn () => $start->copy(),
+                range(1, $count)
+            );
+        }
+
+        $startTs = $start->getTimestamp();
+        $endTs = $end->getTimestamp();
+        $spanSeconds = max(1, $endTs - $startTs);
+
+        if ($count === 1) {
+            $centerTs = intdiv($startTs + $endTs, 2);
+            $jitterLimit = min(900, max(30, (int) floor($spanSeconds * 0.20)));
+            $candidateTs = $centerTs + random_int(-$jitterLimit, $jitterLimit);
+            $candidateTs = max($startTs, min($candidateTs, $endTs));
+
+            return [Carbon::createFromTimestamp($candidateTs, $start->getTimezone())];
+        }
+
+        $intervalSeconds = $spanSeconds / max(1, ($count - 1));
+        $minGapSeconds = max(120, (int) floor($intervalSeconds * 0.35));
+
+        if (($count - 1) * $minGapSeconds > $spanSeconds) {
+            return $this->evenlySpreadBetween($startAt, $endAt, $count);
+        }
+
+        $jitterLimit = (int) floor(min(900, max(15, $intervalSeconds * 0.22)));
+        $timestamps = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $anchorTs = (int) round($startTs + ($intervalSeconds * $i));
+            $candidateTs = $anchorTs + random_int(-$jitterLimit, $jitterLimit);
+
+            if ($i === 0) {
+                $candidateTs = max($startTs, min($candidateTs, $startTs + $jitterLimit));
+            } elseif ($i === $count - 1) {
+                $candidateTs = min($endTs, max($candidateTs, $endTs - $jitterLimit));
+            } else {
+                $candidateTs = max($startTs, min($candidateTs, $endTs));
+            }
+
+            if (!empty($timestamps)) {
+                $candidateTs = max($candidateTs, end($timestamps) + $minGapSeconds);
+            }
+
+            $remaining = $count - $i - 1;
+            $maxAllowedTs = $endTs - ($remaining * $minGapSeconds);
+            $candidateTs = min($candidateTs, $maxAllowedTs);
+
+            if (!empty($timestamps) && $candidateTs <= end($timestamps)) {
+                return $this->evenlySpreadBetween($startAt, $endAt, $count);
+            }
+
+            $timestamps[] = $candidateTs;
+        }
+
+        if (end($timestamps) > $endTs) {
+            return $this->evenlySpreadBetween($startAt, $endAt, $count);
+        }
+
+        return array_map(
+            fn (int $ts) => Carbon::createFromTimestamp($ts, $start->getTimezone()),
+            $timestamps
+        );
     }
 
     private function evenlySpreadBetween(Carbon $startAt, Carbon $endAt, int $count): array
