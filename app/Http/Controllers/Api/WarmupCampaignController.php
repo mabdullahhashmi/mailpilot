@@ -302,6 +302,24 @@ class WarmupCampaignController extends Controller
         return response()->json(['message' => 'Campaign deleted']);
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign_ids' => 'required|array|min:1',
+            'campaign_ids.*' => 'integer|exists:warmup_campaigns,id',
+        ]);
+
+        $campaigns = \App\Models\WarmupCampaign::whereIn('id', $validated['campaign_ids'])->get();
+        $deleted = 0;
+
+        foreach ($campaigns as $campaign) {
+            $campaign->delete();
+            $deleted++;
+        }
+
+        return response()->json(['message' => "$deleted campaigns deleted"]);
+    }
+
     /**
      * Get scheduled timeline for a campaign — all events with times and countdowns.
      */

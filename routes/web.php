@@ -69,6 +69,7 @@ Route::prefix('api/warmup')->middleware(['auth', 'throttle:120,1'])->group(funct
 
     // Warmup Campaigns
     Route::post('campaigns/bulk', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'bulkStore']);
+    Route::post('campaigns/bulk-delete', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'bulkDestroy']);
     Route::apiResource('campaigns', \App\Http\Controllers\Api\WarmupCampaignController::class)->only(['index', 'store', 'show']);
     Route::delete('campaigns/{id}', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'destroy']);
     Route::post('campaigns/{id}/start', [\App\Http\Controllers\Api\WarmupCampaignController::class, 'startCampaign']);

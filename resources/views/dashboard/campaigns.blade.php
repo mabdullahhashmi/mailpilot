@@ -7,8 +7,18 @@
 <div x-data="campaignsPage()" x-init="init()">
 
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <span class="text-zinc-500 text-sm" x-text="campaigns.length + ' campaigns'"></span>
+        <div class="flex items-center gap-4">
+            <span class="text-zinc-500 text-sm" x-text="campaigns.length + ' campaigns'"></span>
+            <template x-if="selectedCampaignIds.length > 0">
+                <button @click="deleteSelectedCampaigns()" class="px-3 py-1.5 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition flex items-center gap-1.5">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete Selected (<span x-text="selectedCampaignIds.length"></span>)
+                </button>
+            </template>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
+            <button @click="selectAllCampaigns()" class="px-3 py-2.5 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition">
+                <span x-text="selectedCampaignIds.length === campaigns.length ? 'Deselect All' : 'Select All'"></span>
+            </button>
             <button @click="openBulkCreateModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 transition">
                 <i data-lucide="layers-3" class="w-4 h-4"></i> Bulk Campaigns
             </button>
@@ -21,9 +31,13 @@
     <!-- Campaign Cards -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <template x-for="c in campaigns" :key="c.id">
-            <div class="glass rounded-2xl p-5 hover:border-white/10 transition">
+            <div class="glass flex flex-col rounded-2xl p-5 hover:border-white/10 transition relative" :class="selectedCampaignIds.includes(c.id) ? 'border border-cyan-500/50 bg-cyan-500/[0.02]' : ''">
+                <!-- Checkbox -->
+                <div class="absolute top-4 right-4 z-10">
+                    <input type="checkbox" :checked="selectedCampaignIds.includes(c.id)" @change="toggleCampaignSelect(c.id)" class="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer">
+                </div>
                 <!-- Header -->
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-4 pr-6">
                     <a :href="'/campaigns/' + c.id" class="flex items-center gap-3 hover:opacity-80 transition">
                         <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="statusGradient(c.status)">
                             <i data-lucide="flame" class="w-5 h-5 text-white"></i>
@@ -321,6 +335,7 @@
 function campaignsPage() {
     return {
         campaigns: [],
+        selectedCampaignIds: [],
         senderOptions: [],
         profileOptions: [],
         showModal: false,
@@ -471,6 +486,32 @@ function campaignsPage() {
                 showToast('Bulk creation failed: ' + e.message, 'error');
             } finally {
                 this.bulkSaving = false;
+            }
+        },
+        toggleCampaignSelect(id) {
+            const index = this.selectedCampaignIds.indexOf(id);
+            if (index === -1) {
+                this.selectedCampaignIds.push(id);
+            } else {
+                this.selectedCampaignIds.splice(index, 1);
+            }
+        },
+        selectAllCampaigns() {
+            if (this.selectedCampaignIds.length === this.campaigns.length) {
+                this.selectedCampaignIds = [];
+            } else {
+                this.selectedCampaignIds = this.campaigns.map(c => c.id);
+            }
+        },
+        async deleteSelectedCampaigns() {
+            if (!confirm(`Are you sure you want to delete ${this.selectedCampaignIds.length} campaign(s)? This action cannot be undone.`)) return;
+            try {
+                await apiCall('/api/warmup/campaigns/bulk-delete', 'POST', { campaign_ids: this.selectedCampaignIds });
+                showToast(`${this.selectedCampaignIds.length} campaigns deleted`);
+                this.selectedCampaignIds = [];
+                await this.init();
+            } catch (e) {
+                showToast('Bulk delete failed: ' + e.message, 'error');
             }
         },
         async action(id, act) {
