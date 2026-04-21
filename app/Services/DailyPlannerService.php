@@ -162,6 +162,12 @@ class DailyPlannerService
 
         foreach ($campaigns as $campaign) {
             try {
+                // If the campaign has a future start date, do not plan it yet
+                if ($campaign->start_date && ! $campaign->start_date->isSameDay(now()) && $campaign->start_date->isFuture()) {
+                    Log::info("DailyPlanner: Skipping campaign #{$campaign->id} - scheduled for future start: {$campaign->start_date->toDateString()}");
+                    continue;
+                }
+
                 // Advance day using campaign day-duration (24h default, 60m for test profile).
                 $targetDay = $this->resolveTargetDayNumber($campaign);
                 $this->advanceCampaignToDay($campaign, $targetDay);

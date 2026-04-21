@@ -88,6 +88,7 @@ class WarmupCampaignController extends Controller
             'campaign_name' => 'sometimes|string|max:255',
             'sender_mailbox_id' => 'required|exists:sender_mailboxes,id',
             'warmup_profile_id' => 'required|exists:warmup_profiles,id',
+            'start_date' => 'nullable|date',
             'time_window_start' => 'sometimes|string',
             'time_window_end' => 'sometimes|string',
             'timezone' => 'nullable|string|max:64',
@@ -107,14 +108,19 @@ class WarmupCampaignController extends Controller
         if (!empty($validated['time_window_end'])) {
             $campaign->update(['time_window_end' => $validated['time_window_end']]);
         }
+        if (!empty($validated['start_date'])) {
+            $campaign->update(['start_date' => $validated['start_date']]);
+        }
         if (array_key_exists('timezone', $validated)) {
             $campaign->update(['timezone' => $validated['timezone'] ?: null]);
         }
 
-        // Auto-plan events immediately after campaign creation
+        // Auto-plan events immediately if start date is today or missing
         try {
             $campaign->refresh();
-            $this->plannerService->planDay($campaign);
+            if (!$campaign->start_date || $campaign->start_date->isSameDay(now()) || $campaign->start_date->isPast()) {
+                $this->plannerService->planDay($campaign);
+            }
         } catch (\Throwable $e) {
             \Log::warning('Auto-plan after campaign creation failed: ' . $e->getMessage());
         }
@@ -129,6 +135,7 @@ class WarmupCampaignController extends Controller
             'sender_mailbox_ids.*' => 'required|integer|distinct|exists:sender_mailboxes,id',
             'warmup_profile_id' => 'required|exists:warmup_profiles,id',
             'campaign_name_prefix' => 'nullable|string|max:255',
+            'start_date' => 'nullable|date',
             'time_window_start' => 'nullable|string',
             'time_window_end' => 'nullable|string',
             'timezone' => 'nullable|string|max:64',
@@ -190,6 +197,10 @@ class WarmupCampaignController extends Controller
                     $updates['time_window_end'] = $validated['time_window_end'];
                 }
 
+                if (!empty($validated['start_date'])) {
+                    $updates['start_date'] = $validated['start_date'];
+                }
+
                 if (array_key_exists('timezone', $validated)) {
                     $updates['timezone'] = $validated['timezone'] ?: null;
                 }
@@ -198,10 +209,12 @@ class WarmupCampaignController extends Controller
                     $campaign->update($updates);
                 }
 
-                // Auto-plan events for each created campaign
+                // Auto-plan events immediately if start date is today or missing
                 try {
                     $campaign->refresh();
-                    $this->plannerService->planDay($campaign);
+                    if (!$campaign->start_date || $campaign->start_date->isSameDay(now()) || $campaign->start_date->isPast()) {
+                        $this->plannerService->planDay($campaign);
+                    }
                 } catch (\Throwable $e) {
                     \Log::warning("Bulk campaign auto-plan failed for campaign #{$campaign->id}: " . $e->getMessage());
                 }

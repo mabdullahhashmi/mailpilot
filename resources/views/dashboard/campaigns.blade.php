@@ -176,7 +176,11 @@
                         </p>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Start Date</label>
+                        <input type="date" x-model="form.start_date" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                    </div>
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window Start</label>
                         <input type="time" x-model="form.time_window_start" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white" value="08:00">
@@ -245,7 +249,11 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-md">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 max-w-2xl">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Start Date</label>
+                    <input type="date" x-model="bulkForm.start_date" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
+                </div>
                 <div>
                     <label class="block text-xs text-zinc-400 mb-1.5 font-medium">Time Window Start</label>
                     <input type="time" x-model="bulkForm.time_window_start" class="input-dark w-full px-3.5 py-2.5 rounded-xl text-sm text-white">
@@ -378,11 +386,12 @@ function campaignsPage() {
         hasShortTestProfile() {
             return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
-        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: 'UTC' }; },
+        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', start_date: new Date().toISOString().split('T')[0], time_window_start: '08:00', time_window_end: '22:00', timezone: 'UTC' }; },
         resetBulkForm() {
             this.bulkForm = {
                 campaign_name_prefix: '',
                 warmup_profile_id: '',
+                start_date: new Date().toISOString().split('T')[0],
                 time_window_start: '08:00',
                 time_window_end: '22:00',
                 timezone: 'UTC',
