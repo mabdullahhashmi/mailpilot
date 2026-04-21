@@ -44,6 +44,10 @@
 
         <!-- Manual Trigger Buttons -->
         <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-white/5">
+            <button @click="clearPendingTasks()" :disabled="runningClearPending" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-500/15 text-red-400 hover:bg-red-500/25 transition">
+                <span :class="runningClearPending && 'animate-spin'" class="inline-flex"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></span>
+                <span x-text="runningClearPending ? 'Removing...' : 'Remove Entire Pending Tasks'"></span>
+            </button>
             <button @click="runPlanner(false)" :disabled="runningPlanner" class="btn-primary px-4 py-2.5 rounded-xl text-xs text-white font-medium flex items-center gap-2">
                 <span :class="runningPlanner && 'animate-spin'" class="inline-flex"><i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i></span>
                 <span x-text="runningPlanner ? 'Planning...' : 'Run Daily Planner'"></span>
@@ -55,10 +59,6 @@
             <button @click="runScheduler()" :disabled="runningScheduler" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition">
                 <span :class="runningScheduler && 'animate-spin'" class="inline-flex"><i data-lucide="play" class="w-3.5 h-3.5"></i></span>
                 <span x-text="runningScheduler ? 'Processing...' : 'Process Due Events'"></span>
-            </button>
-            <button @click="clearPendingTasks()" :disabled="runningClearPending" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-500/15 text-red-400 hover:bg-red-500/25 transition">
-                <span :class="runningClearPending && 'animate-spin'" class="inline-flex"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></span>
-                <span x-text="runningClearPending ? 'Removing...' : 'Remove Entire Pending Tasks'"></span>
             </button>
             <span class="text-zinc-600 text-[10px] leading-tight max-w-xs">Planner creates threads & events. Force Re-Plan discards today's plan and rebuilds it. Scheduler executes due events (sends emails).</span>
         </div>
