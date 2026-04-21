@@ -56,6 +56,10 @@
                 <span :class="runningScheduler && 'animate-spin'" class="inline-flex"><i data-lucide="play" class="w-3.5 h-3.5"></i></span>
                 <span x-text="runningScheduler ? 'Processing...' : 'Process Due Events'"></span>
             </button>
+            <button @click="clearPendingTasks()" :disabled="runningClearPending" class="px-4 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-500/15 text-red-400 hover:bg-red-500/25 transition">
+                <span :class="runningClearPending && 'animate-spin'" class="inline-flex"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></span>
+                <span x-text="runningClearPending ? 'Removing...' : 'Remove Entire Pending Tasks'"></span>
+            </button>
             <span class="text-zinc-600 text-[10px] leading-tight max-w-xs">Planner creates threads & events. Force Re-Plan discards today's plan and rebuilds it. Scheduler executes due events (sends emails).</span>
         </div>
     </div>
@@ -264,6 +268,7 @@ function systemHealthPage() {
         readiness: {},
         runningPlanner: false,
         runningScheduler: false,
+        runningClearPending: false,
 
         get overallOk() {
             return (this.data.queue?.failed_jobs || 0) === 0 &&
@@ -315,6 +320,21 @@ function systemHealthPage() {
                 showToast('Scheduler failed: ' + (e.message || 'Unknown error'), 'error');
             }
             this.runningScheduler = false;
+        },
+
+        async clearPendingTasks() {
+            const confirmed = window.confirm('This will remove ALL pending, locked, and executing tasks across all campaigns. Continue?');
+            if (!confirmed) return;
+
+            this.runningClearPending = true;
+            try {
+                const res = await apiCall('/api/warmup/system-health/clear-pending-tasks', 'POST');
+                showToast(res.message || 'Pending tasks removed', res.success ? 'success' : 'error');
+                await Promise.all([this.load(), this.loadReadiness()]);
+            } catch (e) {
+                showToast('Pending cleanup failed: ' + (e.message || 'Unknown error'), 'error');
+            }
+            this.runningClearPending = false;
         },
 
         isCronRecent(ts) {

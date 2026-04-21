@@ -8,6 +8,7 @@ use App\Models\SeedMailbox;
 use App\Models\Domain;
 use App\Models\WarmupCampaign;
 use App\Models\WarmupEvent;
+use App\Models\SendSlot;
 use App\Models\SystemAlert;
 use App\Models\SystemSetting;
 use App\Services\DailyPlannerService;
@@ -227,6 +228,65 @@ class SystemHealthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Scheduler failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove all pending/locked/executing warmup tasks.
+     */
+    public function clearPendingTasks(Request $request): JsonResponse
+    {
+        try {
+            $result = DB::transaction(function () {
+                $pendingStatuses = ['pending', 'locked', 'executing'];
+
+                $pendingQuery = WarmupEvent::whereIn('status', $pendingStatuses);
+
+                $pendingBefore = (clone $pendingQuery)->count();
+
+                $linkedSlotsBefore = SendSlot::whereIn('warmup_event_id', (clone $pendingQuery)->select('id'))
+                    ->whereIn('status', ['planned', 'executing'])
+                    ->count();
+
+                $slotsSkipped = 0;
+                $pendingDeleted = 0;
+
+                if ($pendingBefore > 0) {
+                    $slotsSkipped = SendSlot::whereIn('warmup_event_id', (clone $pendingQuery)->select('id'))
+                        ->whereIn('status', ['planned', 'executing'])
+                        ->update([
+                            'status' => 'skipped',
+                            'skip_reason' => 'Manual cleanup from System Health: removed pending tasks.',
+                        ]);
+
+                    $pendingDeleted = (clone $pendingQuery)->delete();
+                }
+
+                $pendingAfter = WarmupEvent::whereIn('status', $pendingStatuses)->count();
+
+                return [
+                    'pending_events_before' => $pendingBefore,
+                    'pending_events_deleted' => $pendingDeleted,
+                    'pending_events_after' => $pendingAfter,
+                    'linked_slots_before' => $linkedSlotsBefore,
+                    'slots_skipped' => $slotsSkipped,
+                ];
+            });
+
+            Log::warning('SystemHealth manual pending cleanup executed', $result);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Removed {$result['pending_events_deleted']} pending task(s).",
+                'cleanup' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('SystemHealth pending cleanup failed: ' . $e->getMessage(), ['exception' => $e]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to remove pending tasks: ' . $e->getMessage(),
             ], 500);
         }
     }
