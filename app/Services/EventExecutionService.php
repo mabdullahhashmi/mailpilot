@@ -539,6 +539,11 @@ class EventExecutionService
             if ($thread && $thread->shouldClose() && $thread->thread_status !== 'closed') {
                 $closeAt = $this->scheduleWithinThreadWindow($thread, now()->addMinutes(rand(1, 5)));
 
+                $payload = [];
+                if (is_array($completedEvent->payload) && isset($completedEvent->payload['planner_run_id'])) {
+                    $payload['planner_run_id'] = $completedEvent->payload['planner_run_id'];
+                }
+
                 WarmupEvent::create([
                     'event_type' => 'thread_close',
                     'actor_type' => 'system',
@@ -547,6 +552,7 @@ class EventExecutionService
                     'scheduled_at' => $closeAt,
                     'status' => 'pending',
                     'priority' => 6,
+                    'payload' => empty($payload) ? null : $payload,
                 ]);
             }
             return;
@@ -563,6 +569,11 @@ class EventExecutionService
         // Maybe schedule auxiliary events (open, star, mark important)
         $this->maybeScheduleAuxiliaryEvents($thread, $completedEvent, $replyAt, $delayMinutes);
 
+        $payload = [];
+        if (is_array($completedEvent->payload) && isset($completedEvent->payload['planner_run_id'])) {
+            $payload['planner_run_id'] = $completedEvent->payload['planner_run_id'];
+        }
+
         WarmupEvent::create([
             'event_type' => $nextType,
             'actor_type' => $thread->next_actor_type,
@@ -574,6 +585,7 @@ class EventExecutionService
             'scheduled_at' => $replyAt,
             'status' => 'pending',
             'priority' => 4,
+            'payload' => empty($payload) ? null : $payload,
         ]);
     }
 
@@ -597,6 +609,11 @@ class EventExecutionService
                 $openAt = $replyAt->copy()->subMinutes(1);
             }
 
+            $payload = ['open_actor' => $openActor];
+            if (is_array($event->payload) && isset($event->payload['planner_run_id'])) {
+                $payload['planner_run_id'] = $event->payload['planner_run_id'];
+            }
+
             WarmupEvent::create([
                 'event_type' => 'seed_open_email',
                 'actor_type' => $openActor,
@@ -606,7 +623,7 @@ class EventExecutionService
                 'scheduled_at' => $openAt,
                 'status' => 'pending',
                 'priority' => 3,
-                'payload' => ['open_actor' => $openActor],
+                'payload' => $payload,
             ]);
 
             // 20% chance to mark important
@@ -615,6 +632,11 @@ class EventExecutionService
 
                 if ($importantAt->gte($replyAt)) {
                     $importantAt = $replyAt->copy()->subMinutes(1);
+                }
+
+                $importantPayload = [];
+                if (is_array($event->payload) && isset($event->payload['planner_run_id'])) {
+                    $importantPayload['planner_run_id'] = $event->payload['planner_run_id'];
                 }
 
                 WarmupEvent::create([
@@ -626,6 +648,7 @@ class EventExecutionService
                     'scheduled_at' => $importantAt,
                     'status' => 'pending',
                     'priority' => 7,
+                    'payload' => empty($importantPayload) ? null : $importantPayload,
                 ]);
             }
         }
