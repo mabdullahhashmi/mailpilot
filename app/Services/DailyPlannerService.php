@@ -498,7 +498,14 @@ class DailyPlannerService
         }
 
         if ($windowStartAt->lt($nowTz)) {
-            $windowStartAt = $nowTz->copy()->addSeconds(random_int(5, 45));
+            // If starting today, add a random 1-45 minute stagger to the start time.
+            // This ensures if 50 campaigns are bulk created instantly, their interval grids
+            // are physically out of sync with each other, separating their timelines naturally.
+            $windowStartAt = $nowTz->copy()->addMinutes(random_int(1, 45));
+        } else {
+            // For future days (e.g. tomorrow), add a small random offset so they don't all
+            // exactly start at 08:00:00 simultaneously.
+            $windowStartAt = $windowStartAt->addMinutes(random_int(0, 30));
         }
 
         $remainingSeconds = max(0, $windowEndAt->getTimestamp() - $windowStartAt->getTimestamp());
@@ -554,8 +561,8 @@ class DailyPlannerService
 
         if ($count === 1) {
             // To prevent massive delays and identical clustering on Day 1 (when count = 1),
-            // randomly place the single event within the first 30% of the remaining window (max 3 hours).
-            $maxWindowWait = min(10800, (int) floor($spanSeconds * 0.30));
+            // randomly place the single event within the early portion of the window.
+            $maxWindowWait = min(5400, (int) floor($spanSeconds * 0.25));
             $earliestTs = $startTs + random_int(5, 60);
             $candidateTs = $earliestTs + random_int(0, $maxWindowWait);
             $candidateTs = max($startTs, min($candidateTs, $endTs));
@@ -564,14 +571,16 @@ class DailyPlannerService
         }
 
         $intervalSeconds = $spanSeconds / max(1, ($count - 1));
-        $minGapSeconds = max(120, (int) floor($intervalSeconds * 0.20));
+        
+        // Restore strong gaps: ensure events have at least 35% of the interval between them
+        $minGapSeconds = max(120, (int) floor($intervalSeconds * 0.35));
 
         if (($count - 1) * $minGapSeconds > $spanSeconds) {
             return $this->evenlySpreadBetween($startAt, $endAt, $count);
         }
 
-        // Greatly increased jitter to break up identical patterns across bulk campaigns
-        $jitterLimit = (int) floor(min(3600, max(300, $intervalSeconds * 0.40)));
+        // Restore tight strict jitter so internal campaign gaps remain large and consistent
+        $jitterLimit = (int) floor(min(1200, max(30, $intervalSeconds * 0.20)));
         $timestamps = [];
 
         for ($i = 0; $i < $count; $i++) {
@@ -579,8 +588,8 @@ class DailyPlannerService
             $candidateTs = $anchorTs + random_int(-$jitterLimit, $jitterLimit);
 
             if ($i === 0) {
-                // First event should always start relatively soon, within the first 30 mins
-                $candidateTs = max($startTs, min($candidateTs, $startTs + min(1800, $jitterLimit)));
+                // First event starts naturally with its grid offset
+                $candidateTs = max($startTs, min($candidateTs, $startTs + $jitterLimit));
             } elseif ($i === $count - 1) {
                 $candidateTs = min($endTs, max($candidateTs, $endTs - $jitterLimit));
             } else {
