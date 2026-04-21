@@ -28,7 +28,7 @@ return new class extends Migration
             $table->date('warmup_start_date')->nullable();
             $table->unsignedSmallInteger('current_warmup_day')->default(0);
             $table->unsignedSmallInteger('target_warmup_duration_days')->default(20);
-            $table->unsignedSmallInteger('daily_send_cap')->default(5);
+            $table->unsignedSmallInteger('daily_send_cap')->default(20);
             $table->unsignedSmallInteger('daily_reply_cap')->default(3);
             $table->string('timezone', 50)->default('UTC');
             $table->time('working_hours_start')->default('08:00:00');
