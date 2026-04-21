@@ -378,14 +378,14 @@ function campaignsPage() {
         hasShortTestProfile() {
             return (this.profileOptions || []).some(p => (p.profile_name || '') === 'Short Test (6 Hour Days)');
         },
-        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; },
+        resetForm() { this.form = { campaign_name: '', sender_mailbox_id: '', warmup_profile_id: '', time_window_start: '08:00', time_window_end: '22:00', timezone: 'UTC' }; },
         resetBulkForm() {
             this.bulkForm = {
                 campaign_name_prefix: '',
                 warmup_profile_id: '',
                 time_window_start: '08:00',
                 time_window_end: '22:00',
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                timezone: 'UTC',
                 skip_existing_active: true,
                 sender_mailbox_ids: [],
             };

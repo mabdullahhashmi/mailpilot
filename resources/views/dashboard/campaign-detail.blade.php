@@ -696,7 +696,14 @@ function campaignDetail() {
 
         formatTime(isoStr) {
             if (!isoStr) return '—';
-            return portalTime(isoStr, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            return new Date(isoStr).toLocaleTimeString(undefined, { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit', 
+                hour12: true, 
+                timeZone: 'UTC', 
+                timeZoneName: 'short' 
+            });
         },
 
         getCountdown(isoStr) {
