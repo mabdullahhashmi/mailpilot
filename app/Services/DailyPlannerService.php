@@ -553,22 +553,25 @@ class DailyPlannerService
         $spanSeconds = max(1, $endTs - $startTs);
 
         if ($count === 1) {
-            $centerTs = intdiv($startTs + $endTs, 2);
-            $jitterLimit = min(900, max(30, (int) floor($spanSeconds * 0.20)));
-            $candidateTs = $centerTs + random_int(-$jitterLimit, $jitterLimit);
+            // To prevent massive delays and identical clustering on Day 1 (when count = 1),
+            // randomly place the single event within the first 30% of the remaining window (max 3 hours).
+            $maxWindowWait = min(10800, (int) floor($spanSeconds * 0.30));
+            $earliestTs = $startTs + random_int(5, 60);
+            $candidateTs = $earliestTs + random_int(0, $maxWindowWait);
             $candidateTs = max($startTs, min($candidateTs, $endTs));
 
             return [Carbon::createFromTimestamp($candidateTs, $start->getTimezone())];
         }
 
         $intervalSeconds = $spanSeconds / max(1, ($count - 1));
-        $minGapSeconds = max(120, (int) floor($intervalSeconds * 0.35));
+        $minGapSeconds = max(120, (int) floor($intervalSeconds * 0.20));
 
         if (($count - 1) * $minGapSeconds > $spanSeconds) {
             return $this->evenlySpreadBetween($startAt, $endAt, $count);
         }
 
-        $jitterLimit = (int) floor(min(900, max(15, $intervalSeconds * 0.22)));
+        // Greatly increased jitter to break up identical patterns across bulk campaigns
+        $jitterLimit = (int) floor(min(3600, max(300, $intervalSeconds * 0.40)));
         $timestamps = [];
 
         for ($i = 0; $i < $count; $i++) {
@@ -576,7 +579,8 @@ class DailyPlannerService
             $candidateTs = $anchorTs + random_int(-$jitterLimit, $jitterLimit);
 
             if ($i === 0) {
-                $candidateTs = max($startTs, min($candidateTs, $startTs + $jitterLimit));
+                // First event should always start relatively soon, within the first 30 mins
+                $candidateTs = max($startTs, min($candidateTs, $startTs + min(1800, $jitterLimit)));
             } elseif ($i === $count - 1) {
                 $candidateTs = min($endTs, max($candidateTs, $endTs - $jitterLimit));
             } else {
