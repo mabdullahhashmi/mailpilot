@@ -268,17 +268,25 @@ class DailyPlannerService
     {
         $skipReason = 'Auto-cancelled stale pending task from previous day plan.';
 
-        // Only cancel events that are actually overdue according to their scheduled time.
-        // The previous logic cancelled by `created_at` date which cancelled events
-        // created the day before even when they were scheduled later the same day.
-        // New rule: cancel events scheduled more than 1 hour ago OR scheduled on a prior day.
-        $graceCutoff = now()->subHours(1);
+        // Only cancel events from warmup days that are definitely past
+        // Check the warmup_day_number via the planner_run stored in payload
+        $currentDay = $this->resolveTargetDayNumber($campaign);
+        
+        // Get planner_run IDs for past days (at least 2 days before current)
+        $pastPlannerRunIds = \App\Models\PlannerRun::where('warmup_campaign_id', $campaign->id)
+            ->where('warmup_day_number', '<', $currentDay - 1)
+            ->pluck('id');
 
+        if ($pastPlannerRunIds->isEmpty()) {
+            return ['events_cancelled' => 0, 'slots_skipped' => 0];
+        }
+
+        // Cancel events only if they belong to past planner runs
         $staleEventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
             ->whereIn('status', ['pending', 'locked', 'executing'])
-            ->where(function ($q) use ($graceCutoff) {
-                $q->where('scheduled_at', '<', $graceCutoff)
-                  ->orWhereDate('scheduled_at', '<', today());
+            ->where(function($q) use ($pastPlannerRunIds) {
+                // Check if planner_run_id from payload is in the past planner run IDs
+                $q->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.planner_run_id')) IN (" . implode(',', $pastPlannerRunIds->toArray()) . ")");
             })
             ->pluck('id');
 
