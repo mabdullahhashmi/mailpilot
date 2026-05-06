@@ -268,9 +268,18 @@ class DailyPlannerService
     {
         $skipReason = 'Auto-cancelled stale pending task from previous day plan.';
 
+        // Only cancel events that are actually overdue according to their scheduled time.
+        // The previous logic cancelled by `created_at` date which cancelled events
+        // created the day before even when they were scheduled later the same day.
+        // New rule: cancel events scheduled more than 1 hour ago OR scheduled on a prior day.
+        $graceCutoff = now()->subHours(1);
+
         $staleEventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
             ->whereIn('status', ['pending', 'locked', 'executing'])
-            ->whereDate('created_at', '<', today())
+            ->where(function ($q) use ($graceCutoff) {
+                $q->where('scheduled_at', '<', $graceCutoff)
+                  ->orWhereDate('scheduled_at', '<', today());
+            })
             ->pluck('id');
 
         if ($staleEventIds->isEmpty()) {
