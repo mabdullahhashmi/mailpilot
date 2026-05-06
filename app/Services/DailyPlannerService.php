@@ -51,15 +51,6 @@ class DailyPlannerService
             }
         }
 
-        // Strict day-boundary policy: prevent old pending events from spilling into a new plan day.
-        $staleCleanup = $this->cancelStalePendingEvents($campaign);
-        if (($staleCleanup['events_cancelled'] ?? 0) > 0) {
-            Log::warning("DailyPlanner: Campaign #{$campaign->id} cancelled {$staleCleanup['events_cancelled']} stale pending event(s) from previous day(s)", [
-                'campaign_id' => $campaign->id,
-                'slots_skipped' => $staleCleanup['slots_skipped'] ?? 0,
-            ]);
-        }
-
         // Get rules for today from profile
         $dayRules = $profile->getRulesForDay($day);
         $maxNewThreads = $dayRules['max_new_threads'];
@@ -122,8 +113,6 @@ class DailyPlannerService
             'notes' => [
                 'continuation_threads' => $continuationThreads->count(),
                 'domain_budget_remaining' => $domainBudget,
-                'stale_events_cancelled' => $staleCleanup['events_cancelled'] ?? 0,
-                'stale_slots_skipped' => $staleCleanup['slots_skipped'] ?? 0,
             ],
         ]);
 
@@ -262,57 +251,6 @@ class DailyPlannerService
 
         // Allow one step above planned duration so maintenance transition can happen.
         return max(1, min($planned + 1, $target));
-    }
-
-    private function cancelStalePendingEvents(WarmupCampaign $campaign): array
-    {
-        $skipReason = 'Auto-cancelled stale pending task from previous day plan.';
-
-        // Only cancel events from warmup days that are definitely past
-        // Check the warmup_day_number via the planner_run stored in payload
-        $currentDay = $this->resolveTargetDayNumber($campaign);
-        
-        // Get planner_run IDs for past days (at least 2 days before current)
-        $pastPlannerRunIds = \App\Models\PlannerRun::where('warmup_campaign_id', $campaign->id)
-            ->where('warmup_day_number', '<', $currentDay - 1)
-            ->pluck('id');
-
-        if ($pastPlannerRunIds->isEmpty()) {
-            return ['events_cancelled' => 0, 'slots_skipped' => 0];
-        }
-
-        // Cancel events only if they belong to past planner runs
-        $staleEventIds = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
-            ->whereIn('status', ['pending', 'locked', 'executing'])
-            ->where(function($q) use ($pastPlannerRunIds) {
-                // Check if planner_run_id from payload is in the past planner run IDs
-                $q->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.planner_run_id')) IN (" . implode(',', $pastPlannerRunIds->toArray()) . ")");
-            })
-            ->pluck('id');
-
-        if ($staleEventIds->isEmpty()) {
-            return ['events_cancelled' => 0, 'slots_skipped' => 0];
-        }
-
-        $eventsCancelled = \App\Models\WarmupEvent::whereIn('id', $staleEventIds)
-            ->update([
-                'status' => 'cancelled',
-                'failure_reason' => $skipReason,
-                'lock_token' => null,
-                'lock_expires_at' => null,
-            ]);
-
-        $slotsSkipped = \App\Models\SendSlot::whereIn('warmup_event_id', $staleEventIds)
-            ->whereIn('status', ['planned', 'executing'])
-            ->update([
-                'status' => 'skipped',
-                'skip_reason' => $skipReason,
-            ]);
-
-        return [
-            'events_cancelled' => (int) $eventsCancelled,
-            'slots_skipped' => (int) $slotsSkipped,
-        ];
     }
 
     private function advanceCampaignToDay(WarmupCampaign $campaign, int $targetDay): void
