@@ -15,7 +15,8 @@ class SenderMailboxController extends Controller
 
     public function index(): JsonResponse
     {
-        $mailboxes = \App\Models\SenderMailbox::with(['domain', 'warmupCampaigns'])
+        $mailboxes = SenderMailbox::with(['domain', 'warmupCampaigns'])
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -46,7 +47,7 @@ class SenderMailboxController extends Controller
             'smtp_host.not_regex' => 'SMTP host must be a server host (e.g. smtp.gmail.com), not an email address.',
         ]);
 
-        $mailbox = $this->service->create($validated);
+        $mailbox = $this->service->create($validated, $this->tenantUserId() ?? auth()->id());
         return response()->json($mailbox, 201);
     }
 
@@ -123,7 +124,7 @@ class SenderMailboxController extends Controller
             }
 
             try {
-                $mailbox = $this->service->create($normalized);
+                $mailbox = $this->service->create($normalized, $this->tenantUserId() ?? auth()->id());
                 $seenEmails[$emailKey] = true;
                 $created[] = [
                     'id' => $mailbox->id,
@@ -146,7 +147,7 @@ class SenderMailboxController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $mailbox = \App\Models\SenderMailbox::with(['domain', 'warmupCampaigns', 'healthLogs' => fn($q) => $q->latest()->take(30)])
+        $mailbox = $this->ownedMailboxQuery()->with(['domain', 'warmupCampaigns', 'healthLogs' => fn($q) => $q->latest()->take(30)])
             ->findOrFail($id);
 
         return response()->json($mailbox);
@@ -175,14 +176,14 @@ class SenderMailboxController extends Controller
             'smtp_host.not_regex' => 'SMTP host must be a server host (e.g. smtp.gmail.com), not an email address.',
         ]);
 
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $updated = $this->service->update($mailbox, $validated);
         return response()->json($updated);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $mailbox->delete();
         return response()->json(['message' => 'Deleted']);
     }
@@ -193,14 +194,14 @@ class SenderMailboxController extends Controller
             'test_email' => 'nullable|email',
         ]);
 
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $result = $this->service->testSmtp($mailbox, $validated['test_email'] ?? null);
         return response()->json($result);
     }
 
     public function testImap(int $id): JsonResponse
     {
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $result = $this->service->testImap($mailbox);
         return response()->json($result);
     }
@@ -212,7 +213,7 @@ class SenderMailboxController extends Controller
             'limit' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $result = $this->service->fetchInbox(
             $mailbox,
             (int) ($validated['limit'] ?? 30),
@@ -242,16 +243,27 @@ class SenderMailboxController extends Controller
 
     public function pause(Request $request, int $id): JsonResponse
     {
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $this->service->pause($mailbox, $request->input('reason', 'Manual pause'));
         return response()->json(['message' => 'Paused']);
     }
 
     public function resume(int $id): JsonResponse
     {
-        $mailbox = \App\Models\SenderMailbox::findOrFail($id);
+        $mailbox = $this->ownedMailboxQuery()->findOrFail($id);
         $this->service->resume($mailbox);
         return response()->json(['message' => 'Resumed']);
+    }
+
+    private function tenantUserId(): ?int
+    {
+        $user = auth()->user();
+        return $user && $user->isAdmin() ? null : auth()->id();
+    }
+
+    private function ownedMailboxQuery()
+    {
+        return SenderMailbox::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
     }
 
     private function normalizeBulkRow(array $row): array

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\SeedMailbox;
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -7,7 +8,10 @@ use App\Services\SeedService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-
+        $seeds = SeedMailbox::query()
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
+            ->orderBy('created_at', 'desc')
+            ->get();
 class SeedMailboxController extends Controller
 {
     public function __construct(private SeedService $service) {}
@@ -29,7 +33,7 @@ class SeedMailboxController extends Controller
             'imap_port' => 993,
             'imap_encryption' => 'ssl',
         ],
-        'zoho' => [
+        $seed = $this->service->create($validated, $this->tenantUserId() ?? auth()->id());
             'smtp_host' => 'smtp.zoho.com',
             'smtp_port' => 587,
             'smtp_encryption' => 'tls',
@@ -138,7 +142,7 @@ class SeedMailboxController extends Controller
 
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $errors[] = "Line {$lineNumber}: invalid email '{$email}'";
-                $skipped++;
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
                 continue;
             }
 
@@ -147,7 +151,7 @@ class SeedMailboxController extends Controller
                 $skipped++;
                 continue;
             }
-
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
             if (!isset(self::PROVIDER_PRESETS[$provider])) {
                 $errors[] = "Line {$lineNumber}: unsupported provider '{$provider}' for '{$email}'";
                 $skipped++;
@@ -273,7 +277,7 @@ class SeedMailboxController extends Controller
                     'active_threads' => $senderThreads->whereIn('thread_status', ['planned', 'active', 'closing'])->count(),
                     'messages_count' => $messages->count(),
                     'last_interaction_at' => $messages->first()['sent_at'] ?? null,
-                    'campaigns' => $campaigns,
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
                     'threads' => $threadRows,
                     'messages' => $messages->take(200)->values(),
                 ];
@@ -284,7 +288,7 @@ class SeedMailboxController extends Controller
             ->where('log_date', '>=', today()->subDays(30))
             ->orderByDesc('log_date')
             ->get()
-            ->map(function ($log) {
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
                 return [
                     'log_date' => $log->log_date?->format('Y-m-d'),
                     'interactions_today' => (int) ($log->interactions_today ?? 0),
@@ -292,7 +296,7 @@ class SeedMailboxController extends Controller
                     'per_domain_usage' => $log->per_domain_usage ?? [],
                     'health_score' => (int) ($log->health_score ?? 0),
                     'overload_flag' => (bool) ($log->overload_flag ?? false),
-                    'is_paused' => (bool) ($log->is_paused ?? false),
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
                 ];
             })
             ->values();
@@ -305,7 +309,7 @@ class SeedMailboxController extends Controller
             'messages_total' => $threads->sum(fn ($thread) => $thread->messages->count()),
             'interactions_30d' => (int) $usage30d->sum('interactions_today'),
         ];
-
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
         return response()->json([
             'seed' => $seed,
             'summary' => $summary,
@@ -337,7 +341,7 @@ class SeedMailboxController extends Controller
     }
 
     public function testSmtp(Request $request, int $id): JsonResponse
-    {
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
         $validated = $request->validate([
             'test_email' => 'nullable|email',
         ]);
@@ -349,18 +353,28 @@ class SeedMailboxController extends Controller
     }
 
     public function testImap(int $id): JsonResponse
-    {
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
         $seed = \App\Models\SeedMailbox::findOrFail($id);
         $result = $this->service->testImap($seed);
 
         return response()->json($result);
     }
 
-    public function inbox(Request $request, int $id): JsonResponse
+        $seed = $this->ownedSeedQuery()->findOrFail($id);
     {
         $validated = $request->validate([
             'folder' => 'nullable|string|max:120',
             'limit' => 'nullable|integer|min:1|max:100',
+    private function tenantUserId(): ?int
+    {
+        $user = auth()->user();
+        return $user && $user->isAdmin() ? null : auth()->id();
+    }
+
+    private function ownedSeedQuery()
+    {
+        return SeedMailbox::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
+    }
         ]);
 
         $seed = \App\Models\SeedMailbox::findOrFail($id);
@@ -384,7 +398,8 @@ class SeedMailboxController extends Controller
 
         $summary = $this->service->testAllConnections(
             (string) ($validated['status'] ?? 'all'),
-            (int) ($validated['limit'] ?? 500)
+            (int) ($validated['limit'] ?? 500),
+            $this->tenantUserId() ?? auth()->id()
         );
 
         return response()->json([

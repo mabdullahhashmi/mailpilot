@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Domain extends Model
 {
     protected $fillable = [
+        'user_id',
         'domain_name', 'spf_status', 'dkim_status', 'dmarc_status', 'mx_status',
         'dns_last_checked_at', 'domain_health_score', 'readiness_score',
         'daily_domain_cap', 'daily_sending_cap', 'daily_growth_cap', 'max_active_warming_mailboxes',
@@ -25,6 +27,11 @@ class Domain extends Model
         'maintenance_mode' => 'boolean',
         'last_reputation_scan_at' => 'datetime',
     ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function senderMailboxes(): HasMany
     {

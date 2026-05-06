@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class SeedMailbox extends Model
 {
     protected $fillable = [
+        'user_id',
         'email_address', 'provider_type',
         'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption',
         'imap_host', 'imap_port', 'imap_username', 'imap_password', 'imap_encryption',
@@ -35,6 +37,11 @@ class SeedMailbox extends Model
     protected $hidden = [
         'smtp_password', 'imap_password',
     ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function threads(): HasMany
     {

@@ -21,6 +21,7 @@ class FlowTestService
         ?int $createdBy = null
     ): FlowTestRun {
         $seeds = SeedMailbox::where('status', 'active')
+            ->when($sender->user_id, fn ($query) => $query->where('user_id', $sender->user_id))
             ->whereIn('id', $seedIds)
             ->orderBy('email_address')
             ->get();

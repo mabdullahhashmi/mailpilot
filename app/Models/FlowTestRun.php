@@ -32,6 +32,11 @@ class FlowTestRun extends Model
         return $this->belongsTo(SenderMailbox::class);
     }
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function steps(): HasMany
     {
         return $this->hasMany(FlowTestStep::class)->orderBy('seed_mailbox_id')->orderBy('step_index');

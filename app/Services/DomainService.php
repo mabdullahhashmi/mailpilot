@@ -7,8 +7,9 @@ use App\Models\DomainHealthLog;
 
 class DomainService
 {
-    public function create(array $data): Domain
+    public function create(array $data, ?int $userId = null): Domain
     {
+        $data['user_id'] = $data['user_id'] ?? $userId ?? auth()->id();
         return Domain::create($data);
     }
 

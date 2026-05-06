@@ -30,15 +30,17 @@ class DeliverabilityController extends Controller
 
     public function overview(): JsonResponse
     {
+        $userId = $this->tenantUserId();
+
         $placement = [];
         $bounces = [];
         $reputation = [];
         $strategy = [];
 
-        try { $placement = $this->placementService->getOverallStats(); } catch (\Throwable $e) {}
-        try { $bounces = $this->bounceService->getOverallBounceStats(7); } catch (\Throwable $e) {}
-        try { $reputation = $this->reputationService->getDashboardData(); } catch (\Throwable $e) {}
-        try { $strategy = $this->strategyService->getDashboardData(); } catch (\Throwable $e) {}
+        try { $placement = $this->placementService->getOverallStats($userId); } catch (\Throwable $e) {}
+        try { $bounces = $this->bounceService->getOverallBounceStats(7, $userId); } catch (\Throwable $e) {}
+        try { $reputation = $this->reputationService->getDashboardData($userId); } catch (\Throwable $e) {}
+        try { $strategy = $this->strategyService->getDashboardData($userId); } catch (\Throwable $e) {}
 
         $placementTotal = (int) ($placement['total_inbox'] ?? 0)
             + (int) ($placement['total_spam'] ?? 0)
@@ -95,7 +97,7 @@ class DeliverabilityController extends Controller
                 'reputation_sender_rows' => (int) (($reputation['senders']['count'] ?? 0)),
                 'strategy_logs_today' => (int) (($strategy['todays_recommendations']['total'] ?? 0)),
             ],
-            'senders' => SenderMailbox::where('status', 'active')
+            'senders' => $this->ownedSenderQuery()->where('status', 'active')
                 ->get(['id', 'email_address'])
                 ->map(fn ($s) => ['id' => $s->id, 'email' => $s->email_address])
                 ->values(),
@@ -114,7 +116,7 @@ class DeliverabilityController extends Controller
             return response()->json(['error' => $validator->errors()->first()], 422);
         }
 
-        $sender = SenderMailbox::findOrFail($request->sender_mailbox_id);
+        $sender = $this->ownedSenderQuery()->findOrFail($request->sender_mailbox_id);
         $test = $this->placementService->runTest($sender);
 
         return response()->json([
@@ -125,7 +127,7 @@ class DeliverabilityController extends Controller
 
     public function placementHistory(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
 
         return response()->json([
             'trend' => $this->placementService->getPlacementTrend($sender),
@@ -148,7 +150,9 @@ class DeliverabilityController extends Controller
 
     public function placementTestDetail(int $testId): JsonResponse
     {
-        $test = PlacementTest::with('results.seedMailbox:id,email_address,provider_type')->findOrFail($testId);
+        $test = PlacementTest::with('results.seedMailbox:id,email_address,provider_type')
+            ->whereHas('senderMailbox', fn ($query) => $query->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId)))
+            ->findOrFail($testId);
 
         return response()->json([
             'test' => [
@@ -176,14 +180,14 @@ class DeliverabilityController extends Controller
     public function bounceOverview(): JsonResponse
     {
         return response()->json([
-            'stats' => $this->bounceService->getOverallBounceStats(7),
-            'root_causes' => $this->bounceService->getRootCauseSummary(7),
+            'stats' => $this->bounceService->getOverallBounceStats(7, $this->tenantUserId()),
+            'root_causes' => $this->bounceService->getRootCauseSummary(7, $this->tenantUserId()),
         ]);
     }
 
     public function senderBounces(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
 
         return response()->json(
             $this->bounceService->getSenderBounceAnalytics($sender, 30)
@@ -193,7 +197,7 @@ class DeliverabilityController extends Controller
     public function suppressionCandidates(): JsonResponse
     {
         return response()->json([
-            'candidates' => $this->bounceService->getSuppressionCandidates(),
+            'candidates' => $this->bounceService->getSuppressionCandidates($this->tenantUserId()),
         ]);
     }
 
@@ -219,6 +223,10 @@ class DeliverabilityController extends Controller
     {
         $query = BounceEvent::with('senderMailbox:id,email_address')
             ->orderByDesc('bounced_at');
+
+        if ($this->tenantUserId()) {
+            $query->whereIn('sender_mailbox_id', $this->ownedSenderQuery()->pluck('id'));
+        }
 
         if ($request->sender_id) {
             $query->where('sender_mailbox_id', $request->sender_id);
@@ -251,14 +259,12 @@ class DeliverabilityController extends Controller
 
     public function reputationOverview(): JsonResponse
     {
-        return response()->json(
-            $this->reputationService->getDashboardData()
-        );
+        return response()->json($this->reputationService->getDashboardData($this->tenantUserId()));
     }
 
     public function domainReputation(int $domainId): JsonResponse
     {
-        $domain = Domain::findOrFail($domainId);
+        $domain = $this->ownedDomainQuery()->findOrFail($domainId);
 
         return response()->json([
             'domain' => [
@@ -280,7 +286,7 @@ class DeliverabilityController extends Controller
 
     public function senderReputation(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
 
         return response()->json([
             'sender' => [
@@ -296,7 +302,7 @@ class DeliverabilityController extends Controller
 
     public function runReputationScan(): JsonResponse
     {
-        $results = $this->reputationService->runFullScan();
+        $results = $this->reputationService->runFullScan($this->tenantUserId());
 
         return response()->json([
             'message' => 'Reputation scan completed',
@@ -308,14 +314,12 @@ class DeliverabilityController extends Controller
 
     public function strategyOverview(): JsonResponse
     {
-        return response()->json(
-            $this->strategyService->getDashboardData()
-        );
+        return response()->json($this->strategyService->getDashboardData($this->tenantUserId()));
     }
 
     public function analyzeSender(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
         $log = $this->strategyService->analyze($sender);
 
         return response()->json([
@@ -329,7 +333,7 @@ class DeliverabilityController extends Controller
 
     public function applyStrategy(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
         $log = $this->strategyService->analyzeAndApply($sender);
 
         return response()->json([
@@ -342,7 +346,7 @@ class DeliverabilityController extends Controller
 
     public function senderStrategyHistory(int $senderId): JsonResponse
     {
-        $sender = SenderMailbox::findOrFail($senderId);
+        $sender = $this->ownedSenderQuery()->findOrFail($senderId);
 
         return response()->json([
             'history' => $this->strategyService->getSenderHistory($sender),
@@ -352,11 +356,27 @@ class DeliverabilityController extends Controller
     public function runStrategyAnalysis(Request $request): JsonResponse
     {
         $autoApply = $request->boolean('auto_apply', false);
-        $results = $this->strategyService->analyzeAll($autoApply);
+        $results = $this->strategyService->analyzeAll($autoApply, $this->tenantUserId());
 
         return response()->json([
             'message' => 'Strategy analysis completed',
             'results' => $results,
         ]);
+    }
+
+    private function tenantUserId(): ?int
+    {
+        $user = auth()->user();
+        return $user && $user->isAdmin() ? null : auth()->id();
+    }
+
+    private function ownedSenderQuery()
+    {
+        return SenderMailbox::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
+    }
+
+    private function ownedDomainQuery()
+    {
+        return Domain::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
     }
 }

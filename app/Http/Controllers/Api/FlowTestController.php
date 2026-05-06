@@ -17,10 +17,12 @@ class FlowTestController extends Controller
     public function meta(): JsonResponse
     {
         $senders = SenderMailbox::where('status', 'active')
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
             ->orderBy('email_address')
             ->get(['id', 'email_address', 'status']);
 
         $seeds = SeedMailbox::where('status', 'active')
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
             ->orderBy('email_address')
             ->get(['id', 'email_address', 'provider_type', 'status']);
 
@@ -39,6 +41,7 @@ class FlowTestController extends Controller
     public function index(): JsonResponse
     {
         $runs = FlowTestRun::with(['senderMailbox:id,email_address'])
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('created_by', $ownerId))
             ->withCount([
                 'steps as steps_total',
                 'steps as steps_pending' => fn($q) => $q->whereIn('status', ['pending', 'executing']),
@@ -60,7 +63,8 @@ class FlowTestController extends Controller
         $run = FlowTestRun::with([
             'senderMailbox:id,email_address',
             'steps.seedMailbox:id,email_address,provider_type',
-        ])->findOrFail($id);
+        ])->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('created_by', $ownerId))
+            ->findOrFail($id);
 
         return response()->json([
             'run' => $run,
@@ -80,7 +84,9 @@ class FlowTestController extends Controller
             'reply_delay_seconds' => 'nullable|integer|min:1|max:300',
         ]);
 
-        $sender = SenderMailbox::where('status', 'active')->findOrFail($validated['sender_mailbox_id']);
+        $sender = SenderMailbox::where('status', 'active')
+            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
+            ->findOrFail($validated['sender_mailbox_id']);
 
         $run = $this->flowTests->createRun(
             $sender,
@@ -89,7 +95,7 @@ class FlowTestController extends Controller
             (int) ($validated['open_delay_seconds'] ?? 20),
             (int) ($validated['star_delay_seconds'] ?? 10),
             (int) ($validated['reply_delay_seconds'] ?? 20),
-            auth()->id()
+            $this->tenantUserId() ?? auth()->id()
         );
 
         return response()->json([
@@ -97,5 +103,11 @@ class FlowTestController extends Controller
             'message' => 'Flow test run queued. Steps will execute automatically with second-based delays.',
             'run_id' => $run->id,
         ]);
+    }
+
+    private function tenantUserId(): ?int
+    {
+        $user = auth()->user();
+        return $user && $user->isAdmin() ? null : auth()->id();
     }
 }

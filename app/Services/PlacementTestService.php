@@ -33,6 +33,7 @@ class PlacementTestService
 
         try {
             $seeds = SeedMailbox::where('status', 'active')
+                ->when($sender->user_id, fn ($query) => $query->where('user_id', $sender->user_id))
                 ->whereNotNull('imap_host')
                 ->whereNotNull('imap_password')
                 ->take(self::MAX_SEEDS_PER_TEST)
@@ -218,10 +219,15 @@ class PlacementTestService
     /**
      * Get aggregate placement stats across all senders.
      */
-    public function getOverallStats(): array
+    public function getOverallStats(?int $userId = null): array
     {
+        $senderIds = $userId
+            ? SenderMailbox::where('user_id', $userId)->pluck('id')
+            : null;
+
         $recent = PlacementTest::where('status', 'completed')
             ->where('completed_at', '>=', now()->subDays(7))
+            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->get();
 
         if ($recent->isEmpty()) {
@@ -237,6 +243,7 @@ class PlacementTestService
 
         $sendersBelowThreshold = SenderMailbox::where('placement_score', '<', 50)
             ->whereNotNull('placement_score')
+            ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->count();
 
         return [
