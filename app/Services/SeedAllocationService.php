@@ -32,7 +32,6 @@ class SeedAllocationService
         $senderDomainName = explode('@', $sender->email_address)[1] ?? '';
 
         return SeedMailbox::where('status', 'active')
-            ->when($sender->user_id, fn ($query) => $query->where('user_id', $sender->user_id))
             ->where('email_address', 'NOT LIKE', "%@{$senderDomainName}")
             ->whereDoesntHave('pauseRules', function ($q) {
                 $q->where('status', 'active')
@@ -60,7 +59,6 @@ class SeedAllocationService
         $senderDomainName = strtolower(explode('@', $sender->email_address)[1] ?? ($domain->domain_name ?? ''));
 
         $seeds = SeedMailbox::orderBy('email_address')
-            ->when($sender->user_id, fn ($query) => $query->where('user_id', $sender->user_id))
             ->get([
                 'id', 'email_address', 'provider_type', 'status',
                 'daily_total_interaction_cap',

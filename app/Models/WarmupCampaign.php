@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class WarmupCampaign extends Model
 {
     protected $fillable = [
-        'user_id',
         'campaign_name', 'sender_mailbox_id', 'domain_id', 'warmup_profile_id',
         'start_date', 'planned_duration_days', 'day_duration_minutes', 'current_day_number',
         'current_stage', 'status', 'maintenance_mode_enabled',
@@ -25,11 +24,6 @@ class WarmupCampaign extends Model
         'completed_at' => 'datetime',
         'paused_at' => 'datetime',
     ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 
     public function senderMailbox(): BelongsTo
     {

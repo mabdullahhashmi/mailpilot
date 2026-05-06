@@ -11,10 +11,7 @@ class ContentTemplateController extends Controller
 {
     public function index(): JsonResponse
     {
-        $templates = ContentTemplate::query()
-            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
-            ->orderByDesc('updated_at')
-            ->get();
+        $templates = ContentTemplate::orderByDesc('updated_at')->get();
         return response()->json($templates);
     }
 
@@ -35,7 +32,6 @@ class ContentTemplateController extends Controller
         ]);
 
         $validated['content_fingerprint'] = md5($validated['body'] . ($validated['subject'] ?? ''));
-        $validated['user_id'] = $this->tenantUserId() ?? auth()->id();
         $template = ContentTemplate::create($validated);
 
         return response()->json($template, 201);
@@ -43,7 +39,7 @@ class ContentTemplateController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $template = $this->ownedTemplateQuery()->findOrFail($id);
+        $template = ContentTemplate::findOrFail($id);
 
         $validated = $request->validate([
             'template_type' => 'sometimes|in:initial,reply,closing',
@@ -71,18 +67,7 @@ class ContentTemplateController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
-        $this->ownedTemplateQuery()->findOrFail($id)->delete();
+        ContentTemplate::findOrFail($id)->delete();
         return response()->json(['message' => 'Template deleted']);
-    }
-
-    private function tenantUserId(): ?int
-    {
-        $user = auth()->user();
-        return $user && $user->isAdmin() ? null : auth()->id();
-    }
-
-    private function ownedTemplateQuery()
-    {
-        return ContentTemplate::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
     }
 }

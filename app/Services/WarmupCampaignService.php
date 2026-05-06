@@ -8,20 +8,17 @@ use App\Models\WarmupProfile;
 
 class WarmupCampaignService
 {
-    public function start(SenderMailbox $mailbox, ?int $profileId = null, ?int $userId = null): WarmupCampaign
+    public function start(SenderMailbox $mailbox, ?int $profileId = null): WarmupCampaign
     {
         $profile = $profileId
-            ? WarmupProfile::where('user_id', $userId ?? $mailbox->user_id ?? auth()->id())->findOrFail($profileId)
-            : WarmupProfile::where('profile_type', 'default')
-                ->where('user_id', $userId ?? $mailbox->user_id ?? auth()->id())
-                ->firstOrFail();
+            ? WarmupProfile::findOrFail($profileId)
+            : WarmupProfile::where('profile_type', 'default')->firstOrFail();
 
         // Use profile day_rules count as duration (user sets this in profile builder)
         $profileDays = is_array($profile->day_rules) ? count($profile->day_rules) : null;
         $duration = $profileDays ?: $mailbox->target_warmup_duration_days ?: 14;
 
         $campaign = WarmupCampaign::create([
-            'user_id' => $userId ?? $mailbox->user_id ?? auth()->id(),
             'sender_mailbox_id' => $mailbox->id,
             'domain_id' => $mailbox->domain_id,
             'warmup_profile_id' => $profile->id,

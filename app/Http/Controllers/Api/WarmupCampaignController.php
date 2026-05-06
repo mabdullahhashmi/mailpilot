@@ -26,8 +26,7 @@ class WarmupCampaignController extends Controller
 
     public function index(): JsonResponse
     {
-        $campaigns = WarmupCampaign::with(['senderMailbox', 'domain', 'profile'])
-            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
+        $campaigns = \App\Models\WarmupCampaign::with(['senderMailbox', 'domain', 'profile'])
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -96,9 +95,8 @@ class WarmupCampaignController extends Controller
         ]);
 
         $campaign = $this->campaignService->start(
-            $this->ownedSenderQuery()->findOrFail($validated['sender_mailbox_id']),
-            $validated['warmup_profile_id'],
-            $this->tenantUserId() ?? auth()->id()
+            SenderMailbox::findOrFail($validated['sender_mailbox_id']),
+            $validated['warmup_profile_id']
         );
 
         if (!empty($validated['campaign_name'])) {
@@ -148,7 +146,7 @@ class WarmupCampaignController extends Controller
         $campaignNamePrefix = trim((string) ($validated['campaign_name_prefix'] ?? ''));
 
         $senderIds = array_values($validated['sender_mailbox_ids']);
-        $sendersById = $this->ownedSenderQuery()->whereIn('id', $senderIds)->get()->keyBy('id');
+        $sendersById = SenderMailbox::whereIn('id', $senderIds)->get()->keyBy('id');
 
         $created = [];
         $errors = [];
@@ -183,7 +181,7 @@ class WarmupCampaignController extends Controller
             }
 
             try {
-                $campaign = $this->campaignService->start($sender, (int) $validated['warmup_profile_id'], $this->tenantUserId() ?? auth()->id());
+                $campaign = $this->campaignService->start($sender, (int) $validated['warmup_profile_id']);
 
                 $updates = [];
                 if ($campaignNamePrefix !== '') {
@@ -244,7 +242,7 @@ class WarmupCampaignController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->with([
+        $campaign = \App\Models\WarmupCampaign::with([
             'senderMailbox:id,email_address,provider_type,status,current_warmup_day,daily_send_cap',
             'domain:id,domain_name',
             'profile:id,profile_name,day_rules,profile_type',
@@ -271,48 +269,48 @@ class WarmupCampaignController extends Controller
 
     public function pause(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $this->campaignService->pause($campaign);
         return response()->json(['message' => 'Campaign paused']);
     }
 
     public function resume(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $this->campaignService->resume($campaign);
         return response()->json(['message' => 'Campaign resumed']);
     }
 
     public function stop(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $this->campaignService->stop($campaign);
         return response()->json(['message' => 'Campaign stopped']);
     }
 
     public function restart(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $this->campaignService->restart($campaign);
         return response()->json(['message' => 'Campaign restarted']);
     }
 
     public function report(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         return response()->json($this->reportingService->campaignReport($campaign));
     }
 
     public function startCampaign(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $campaign->update(['status' => 'active']);
         return response()->json(['message' => 'Campaign started']);
     }
 
     public function destroy(int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $campaign->delete();
         return response()->json(['message' => 'Campaign deleted']);
     }
@@ -324,7 +322,7 @@ class WarmupCampaignController extends Controller
             'campaign_ids.*' => 'integer|exists:warmup_campaigns,id',
         ]);
 
-        $campaigns = $this->ownedCampaignQuery()->whereIn('id', $validated['campaign_ids'])->get();
+        $campaigns = \App\Models\WarmupCampaign::whereIn('id', $validated['campaign_ids'])->get();
         $deleted = 0;
 
         foreach ($campaigns as $campaign) {
@@ -340,7 +338,7 @@ class WarmupCampaignController extends Controller
      */
     public function schedule(Request $request, int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $selectedDate = $request->query('date');
         $date = $selectedDate ? \Carbon\Carbon::parse($selectedDate)->toDateString() : today()->toDateString();
 
@@ -405,7 +403,7 @@ class WarmupCampaignController extends Controller
      */
     public function events(Request $request, int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->findOrFail($id);
+        $campaign = \App\Models\WarmupCampaign::findOrFail($id);
         $selectedDate = $request->query('date');
 
         $query = \App\Models\WarmupEvent::where('warmup_campaign_id', $campaign->id)
@@ -457,7 +455,7 @@ class WarmupCampaignController extends Controller
      */
     public function seedEligibility(Request $request, int $id): JsonResponse
     {
-        $campaign = $this->ownedCampaignQuery()->with([
+        $campaign = \App\Models\WarmupCampaign::with([
             'senderMailbox:id,email_address',
             'domain:id,domain_name',
         ])->findOrFail($id);
@@ -594,21 +592,5 @@ class WarmupCampaignController extends Controller
             'title' => $fallbackTitle,
             'reason' => 'This task failed due to a technical error. Open campaign detail to see full diagnostics.',
         ];
-    }
-
-    private function tenantUserId(): ?int
-    {
-        $user = auth()->user();
-        return $user && $user->isAdmin() ? null : auth()->id();
-    }
-
-    private function ownedCampaignQuery()
-    {
-        return WarmupCampaign::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
-    }
-
-    private function ownedSenderQuery()
-    {
-        return SenderMailbox::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
     }
 }

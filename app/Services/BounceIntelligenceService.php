@@ -112,29 +112,18 @@ class BounceIntelligenceService
     /**
      * Get bounce summary across all senders (overview stats).
      */
-    public function getOverallBounceStats(int $days = 7, ?int $userId = null): array
+    public function getOverallBounceStats(int $days = 7): array
     {
         $cutoff = now()->subDays($days);
-        $senderIds = $userId
-            ? SenderMailbox::where('user_id', $userId)->pluck('id')
-            : null;
-
-        $senderFilter = function ($query) use ($senderIds) {
-            if ($senderIds) {
-                $query->whereIn('sender_mailbox_id', $senderIds);
-            }
-        };
 
         // Use DB aggregation instead of loading all records
         $byType = BounceEvent::where('bounced_at', '>=', $cutoff)
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->selectRaw('bounce_type, COUNT(*) as count')
             ->groupBy('bounce_type')
             ->pluck('count', 'bounce_type')
             ->toArray();
 
         $byProvider = BounceEvent::where('bounced_at', '>=', $cutoff)
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->selectRaw('provider, COUNT(*) as count')
             ->groupBy('provider')
             ->pluck('count', 'provider')
@@ -144,7 +133,6 @@ class BounceIntelligenceService
 
         // Identify top offending senders via DB aggregation
         $topSenderStats = BounceEvent::where('bounced_at', '>=', $cutoff)
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->selectRaw('sender_mailbox_id, COUNT(*) as total_count')
             ->selectRaw("SUM(CASE WHEN bounce_type = 'hard' THEN 1 ELSE 0 END) as hard_count")
             ->groupBy('sender_mailbox_id')
@@ -153,9 +141,7 @@ class BounceIntelligenceService
             ->get();
 
         $senderIds = $topSenderStats->pluck('sender_mailbox_id')->toArray();
-        $senders = $senderIds
-            ? SenderMailbox::whereIn('id', $senderIds)->pluck('email_address', 'id')
-            : SenderMailbox::whereIn('id', $topSenderStats->pluck('sender_mailbox_id')->toArray())->pluck('email_address', 'id');
+        $senders = SenderMailbox::whereIn('id', $senderIds)->pluck('email_address', 'id');
 
         $senderDetails = [];
         foreach ($topSenderStats as $stat) {
@@ -174,18 +160,17 @@ class BounceIntelligenceService
             'by_type' => $byType,
             'by_provider' => $byProvider,
             'top_offending_senders' => $senderDetails,
-            'suppression_candidates' => $this->getSuppressionCandidates($userId),
+            'suppression_candidates' => $this->getSuppressionCandidates(),
         ];
     }
 
     /**
      * Get emails that should be suppressed (multiple hard bounces).
      */
-    public function getSuppressionCandidates(?int $userId = null): array
+    public function getSuppressionCandidates(): array
     {
         return BounceEvent::where('bounce_type', 'hard')
             ->where('is_suppressed', false)
-            ->when($userId, fn ($query) => $query->whereIn('sender_mailbox_id', SenderMailbox::where('user_id', $userId)->pluck('id')))
             ->select('recipient_email')
             ->selectRaw('COUNT(*) as bounce_count')
             ->selectRaw('MAX(bounced_at) as last_bounce')
@@ -215,16 +200,12 @@ class BounceIntelligenceService
     /**
      * Get root cause summary for bounces (grouped analysis).
      */
-    public function getRootCauseSummary(int $days = 7, ?int $userId = null): array
+    public function getRootCauseSummary(int $days = 7): array
     {
         $cutoff = now()->subDays($days);
-        $senderIds = $userId
-            ? SenderMailbox::where('user_id', $userId)->pluck('id')
-            : null;
 
         // Use DB aggregation instead of loading all bounces
         $groups = BounceEvent::where('bounced_at', '>=', $cutoff)
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->selectRaw("CONCAT(COALESCE(provider, 'unknown'), ':', bounce_type) as group_key")
             ->selectRaw('provider, bounce_type, COUNT(*) as group_count')
             ->selectRaw("GROUP_CONCAT(DISTINCT bounce_code ORDER BY bounce_code SEPARATOR ',') as codes")

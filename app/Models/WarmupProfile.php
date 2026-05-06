@@ -3,13 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WarmupProfile extends Model
 {
     protected $fillable = [
-        'user_id',
         'profile_name', 'description', 'profile_type',
         'day_rules', 'default_max_new_threads_per_day',
         'default_max_reply_actions_per_day', 'default_max_total_actions_per_day',
@@ -25,11 +23,6 @@ class WarmupProfile extends Model
         'reply_delay_distribution' => 'array',
         'anomaly_thresholds' => 'array',
     ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 
     public function campaigns(): HasMany
     {

@@ -3,17 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\WarmupProfile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class WarmupProfileController extends Controller
 {
     public function index(): JsonResponse
     {
-        $profiles = WarmupProfile::withCount('campaigns')
-            ->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId))
+        $profiles = \App\Models\WarmupProfile::withCount('campaigns')
             ->orderBy('profile_name')
             ->get();
 
@@ -22,15 +19,8 @@ class WarmupProfileController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $ownerId = $this->tenantUserId() ?? auth()->id();
-
         $validated = $request->validate([
-            'profile_name' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('warmup_profiles', 'profile_name')->where(fn ($query) => $query->where('user_id', $ownerId)),
-            ],
+            'profile_name' => 'required|string|max:255|unique:warmup_profiles,profile_name',
             'description' => 'nullable|string',
             'profile_type' => 'sometimes|in:default,aggressive,conservative,maintenance,custom',
             'day_rules' => 'nullable|array',
@@ -39,14 +29,13 @@ class WarmupProfileController extends Controller
             'provider_distribution' => 'nullable|array',
         ]);
 
-        $validated['user_id'] = $ownerId;
-        $profile = WarmupProfile::create($validated);
+        $profile = \App\Models\WarmupProfile::create($validated);
         return response()->json($profile, 201);
     }
 
     public function show(int $id): JsonResponse
     {
-        $profile = $this->ownedProfileQuery()->withCount('campaigns')
+        $profile = \App\Models\WarmupProfile::withCount('campaigns')
             ->findOrFail($id);
 
         return response()->json($profile);
@@ -54,17 +43,10 @@ class WarmupProfileController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $profile = $this->ownedProfileQuery()->findOrFail($id);
+        $profile = \App\Models\WarmupProfile::findOrFail($id);
 
         $validated = $request->validate([
-            'profile_name' => [
-                'sometimes',
-                'string',
-                'max:255',
-                Rule::unique('warmup_profiles', 'profile_name')
-                    ->ignore($profile->id)
-                    ->where(fn ($query) => $query->where('user_id', $profile->user_id)),
-            ],
+            'profile_name' => 'sometimes|string|max:255|unique:warmup_profiles,profile_name,' . $id,
             'description' => 'nullable|string',
             'profile_type' => 'sometimes|in:default,aggressive,conservative,maintenance,custom',
             'day_rules' => 'sometimes|array',
@@ -79,7 +61,7 @@ class WarmupProfileController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
-        $profile = $this->ownedProfileQuery()->findOrFail($id);
+        $profile = \App\Models\WarmupProfile::findOrFail($id);
 
         if ($profile->campaigns()->where('status', 'active')->exists()) {
             return response()->json(['error' => 'Cannot delete profile with active campaigns'], 422);
@@ -87,16 +69,5 @@ class WarmupProfileController extends Controller
 
         $profile->delete();
         return response()->json(['message' => 'Deleted']);
-    }
-
-    private function tenantUserId(): ?int
-    {
-        $user = auth()->user();
-        return $user && $user->isAdmin() ? null : auth()->id();
-    }
-
-    private function ownedProfileQuery()
-    {
-        return WarmupProfile::query()->when($this->tenantUserId(), fn ($query, $ownerId) => $query->where('user_id', $ownerId));
     }
 }

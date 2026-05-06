@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class SenderMailbox extends Model
 {
     protected $fillable = [
-        'user_id',
         'domain_id', 'email_address', 'provider_type',
         'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption',
         'imap_host', 'imap_port', 'imap_username', 'imap_password', 'imap_encryption',
@@ -46,11 +45,6 @@ class SenderMailbox extends Model
     protected $hidden = [
         'smtp_password', 'imap_password',
     ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 
     public function domain(): BelongsTo
     {

@@ -3,12 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ContentTemplate extends Model
 {
     protected $fillable = [
-        'user_id',
         'template_type', 'category', 'subject', 'body',
         'greetings', 'signoffs', 'variations', 'placeholders',
         'warmup_stage', 'is_active', 'usage_count', 'last_used_at',
@@ -23,11 +21,6 @@ class ContentTemplate extends Model
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
     ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 
     public function isOnCooldown(): bool
     {

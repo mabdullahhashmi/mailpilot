@@ -12,11 +12,9 @@ class MailboxService
 
     public function __construct(private InboxFetchService $inboxFetchService) {}
 
-    public function create(array $data, ?int $userId = null): SenderMailbox
+    public function create(array $data): SenderMailbox
     {
-        $data['user_id'] = $data['user_id'] ?? $userId ?? auth()->id();
-
-        $domain = $this->resolveOrCreateDomain($data['email_address'], $data['user_id']);
+        $domain = $this->resolveOrCreateDomain($data['email_address']);
         $data['domain_id'] = $domain->id;
 
         $data = $this->applyDefaults($data);
@@ -382,15 +380,12 @@ class MailboxService
         return Crypt::decryptString($encrypted);
     }
 
-    private function resolveOrCreateDomain(string $email, ?int $userId = null): Domain
+    private function resolveOrCreateDomain(string $email): Domain
     {
         $domainName = substr($email, strpos($email, '@') + 1);
 
         return Domain::firstOrCreate(
-            [
-                'user_id' => $userId ?? auth()->id(),
-                'domain_name' => $domainName,
-            ],
+            ['domain_name' => $domainName],
             [
                 'status' => 'active',
                 'daily_domain_cap' => 50,

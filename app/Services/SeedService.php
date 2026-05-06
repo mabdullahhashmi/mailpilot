@@ -11,10 +11,8 @@ class SeedService
 
     public function __construct(private InboxFetchService $inboxFetchService) {}
 
-    public function create(array $data, ?int $userId = null): SeedMailbox
+    public function create(array $data): SeedMailbox
     {
-        $data['user_id'] = $data['user_id'] ?? $userId ?? auth()->id();
-
         // Map frontend field names to model columns
         if (isset($data['daily_interaction_cap'])) {
             $data['daily_total_interaction_cap'] = $data['daily_interaction_cap'];
@@ -259,11 +257,9 @@ class SeedService
         return $this->inboxFetchService->fetchInbox($seed, $limit, $folder);
     }
 
-    public function testAllConnections(?string $status = null, int $limit = 500, ?int $userId = null): array
+    public function testAllConnections(?string $status = null, int $limit = 500): array
     {
-        $query = SeedMailbox::query()
-            ->when($userId, fn ($builder) => $builder->where('user_id', $userId))
-            ->orderBy('id');
+        $query = SeedMailbox::query()->orderBy('id');
 
         $normalizedStatus = strtolower(trim((string) ($status ?? 'all')));
         if ($normalizedStatus !== '' && $normalizedStatus !== 'all') {

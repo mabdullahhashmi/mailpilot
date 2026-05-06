@@ -147,15 +147,12 @@ class ReputationService
     /**
      * Run full reputation scan for all domains and senders.
      */
-    public function runFullScan(?int $userId = null): array
+    public function runFullScan(): array
     {
         $domainsScored = 0;
         $sendersScored = 0;
 
-        $domains = Domain::with('senderMailboxes')
-            ->where('status', 'active')
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
-            ->get();
+        $domains = Domain::with('senderMailboxes')->where('status', 'active')->get();
         foreach ($domains as $i => $domain) {
             try {
                 $this->scoreDomain($domain);
@@ -168,10 +165,7 @@ class ReputationService
             }
         }
 
-        $senders = SenderMailbox::with('domain')
-            ->where('status', 'active')
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
-            ->get();
+        $senders = SenderMailbox::with('domain')->where('status', 'active')->get();
         foreach ($senders as $i => $sender) {
             try {
                 $this->scoreSender($sender);
@@ -274,23 +268,17 @@ class ReputationService
     /**
      * Get overall reputation dashboard data.
      */
-    public function getDashboardData(?int $userId = null): array
+    public function getDashboardData(): array
     {
-        $domainIds = $userId ? Domain::where('user_id', $userId)->pluck('id') : null;
-        $senderIds = $userId ? SenderMailbox::where('user_id', $userId)->pluck('id') : null;
-
         $domainScores = ReputationScore::whereNull('sender_mailbox_id')
             ->where('score_date', today())
-            ->when($domainIds, fn ($query) => $query->whereIn('domain_id', $domainIds))
             ->get();
 
         $senderScores = ReputationScore::whereNotNull('sender_mailbox_id')
             ->where('score_date', today())
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
             ->get();
 
         $domains = Domain::where('status', 'active')
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->orderBy('domain_name')
             ->get([
                 'id',
@@ -305,7 +293,6 @@ class ReputationService
             ]);
 
         $senders = SenderMailbox::where('status', 'active')
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->orderBy('email_address')
             ->get([
                 'id',

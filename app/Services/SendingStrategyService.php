@@ -60,11 +60,10 @@ class SendingStrategyService
     /**
      * Run strategy analysis for all active senders.
      */
-    public function analyzeAll(bool $autoApply = false, ?int $userId = null): array
+    public function analyzeAll(bool $autoApply = false): array
     {
         $senders = SenderMailbox::where('status', 'active')
             ->where('is_warmup_enabled', true)
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->get();
 
         $results = ['analyzed' => 0, 'ramp_up' => 0, 'slow_down' => 0, 'maintain' => 0, 'pause' => 0, 'resume' => 0];
@@ -108,17 +107,12 @@ class SendingStrategyService
     /**
      * Get strategy overview dashboard data.
      */
-    public function getDashboardData(?int $userId = null): array
+    public function getDashboardData(): array
     {
-        $senderIds = $userId ? SenderMailbox::where('user_id', $userId)->pluck('id') : null;
-
-        $today = SendingStrategyLog::whereDate('created_at', today())
-            ->when($senderIds, fn ($query) => $query->whereIn('sender_mailbox_id', $senderIds))
-            ->get();
+        $today = SendingStrategyLog::whereDate('created_at', today())->get();
 
         $senders = SenderMailbox::where('status', 'active')
             ->where('is_warmup_enabled', true)
-            ->when($userId, fn ($query) => $query->where('user_id', $userId))
             ->get(['id', 'email_address', 'daily_send_cap', 'current_warmup_day', 'reputation_score', 'placement_score']);
 
         $senderIds = $senders->pluck('id')->all();
