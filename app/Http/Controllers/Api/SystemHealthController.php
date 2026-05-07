@@ -202,9 +202,9 @@ class SystemHealthController extends Controller
     public function triggerScheduler(Request $request, SchedulerService $scheduler): JsonResponse
     {
         try {
-            $defaultBatch = (int) SystemSetting::get('scheduler_batch_size', 20);
+            $defaultBatch = (int) SystemSetting::get('scheduler_batch_size', 50);
             $batchSize = (int) $request->input('batch_size', $defaultBatch);
-            $batchSize = max(1, min($batchSize, 500));
+            $batchSize = max(50, min($batchSize, 500));
 
             $run = $scheduler->processEvents($batchSize, 10);
             SystemSetting::set('last_scheduler_run', now()->toDateTimeString(), 'cron');

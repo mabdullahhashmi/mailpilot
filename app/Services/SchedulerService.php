@@ -18,7 +18,7 @@ class SchedulerService
      * Main scheduler loop. Called every 1-5 minutes via cron.
      * Fetches due events, locks them, executes them idempotently.
      */
-    public function processEvents(int $batchSize = 20, int $maxBatches = 5): SchedulerRun
+    public function processEvents(int $batchSize = 50, int $maxBatches = 5): SchedulerRun
     {
         $run = null;
         $startedAt = now();
